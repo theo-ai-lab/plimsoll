@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://plimsoll.dev/schemas/policy.schema.json",
+  "title": "Plimsoll policy",
+  "description": "Schema for a Plimsoll policy file: the declarative budget and trajectory rules used to evaluate agent traces. All properties are optional; an empty object is a valid policy that applies built-in defaults.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional reference to this JSON Schema, allowing editors to provide validation and autocomplete."
+    },
+    "version": {
+      "type": "string",
+      "description": "Optional free-form version label for the policy document (ignored by the loader)."
+    },
+    "allowed_tools": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Allowlist of tool names; if non-empty, only these tools may appear in a trace."
+    },
+    "forbidden_tools": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Denylist of tool names that must never appear in a trace."
+    },
+    "required_tools": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Tool names that must appear at least once in a trace."
+    },
+    "max_steps": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum number of agent steps (spans) permitted in a trace."
+    },
+    "max_duration_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum total wall-clock duration of a trace, in milliseconds."
+    },
+    "max_tokens": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum total token count permitted across a trace."
+    },
+    "max_estimated_cost_usd": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Maximum estimated total cost of a trace, in US dollars."
+    },
+    "max_repeated_action_count": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum number of times an identical action may repeat before it is flagged (defaults to 1)."
+    },
+    "pii_patterns": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "regex"
+      },
+      "description": "Regular expressions whose matches in trace content are flagged as personally identifiable information."
+    },
+    "secret_patterns": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "regex"
+      },
+      "description": "Regular expressions whose matches in trace content are flagged as leaked secrets."
+    },
+    "expected_output_mode": {
+      "type": "string",
+      "enum": ["contains", "exact"],
+      "description": "How the final output is compared to the expected output: substring containment or exact match (defaults to 'contains')."
+    },
+    "max_tool_sequence_distance": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Maximum allowed edit distance between the observed tool sequence and the expected one."
+    },
+    "trajectory_match_mode": {
+      "type": "string",
+      "enum": ["strict", "unordered", "subset", "superset"],
+      "description": "How the observed trajectory is matched against the expected trajectory."
+    },
+    "must_precede": {
+      "type": "array",
+      "description": "Ordering invariants: for each pair, any run that performs 'after' must have performed 'before' at an earlier step (e.g. require approvals before a privileged action). A run that never performs 'after' is valid.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["before", "after"],
+        "properties": {
+          "before": { "type": "string", "description": "Tool that must occur first." },
+          "after": { "type": "string", "description": "Tool that must not occur before 'before'." }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "$schema": "https://plimsoll.dev/schemas/policy.schema.json",
+      "version": "1",
+      "allowed_tools": ["search_docs", "read_ticket", "summarize", "create_patch"],
+      "forbidden_tools": ["send_email", "delete_file", "deploy"],
+      "required_tools": ["read_ticket", "summarize"],
+      "max_steps": 6,
+      "max_duration_ms": 9000,
+      "max_tokens": 1800,
+      "max_estimated_cost_usd": 0.02,
+      "max_repeated_action_count": 1,
+      "expected_output_mode": "contains",
+      "max_tool_sequence_distance": 1,
+      "pii_patterns": ["\\bcustomer_[0-9]{4}\\b"],
+      "secret_patterns": ["\\bAPIKEY_[A-Z0-9]{12,}\\b"]
+    }
+  ]
+}
