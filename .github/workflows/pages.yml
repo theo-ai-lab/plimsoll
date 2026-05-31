@@ -1,0 +1,49 @@
+# Publish the sample Plimsoll HTML report to GitHub Pages.
+#
+# The live sample is the regression demo report, alongside the golden reports,
+# so anyone can see what Plimsoll output looks like without running it.
+
+name: pages
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "examples/output/**"
+
+# Only one Pages deployment at a time; let an in-progress run finish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write     # deploy to Pages
+      id-token: write  # verify the deployment origin
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assemble the site
+        run: |
+          mkdir -p _site
+          # Landing page: the regression demo report.
+          cp examples/output/regression-demo/report.html _site/index.html
+          # Keep the demo report at its own path too, plus the golden reports.
+          cp -r examples/output/regression-demo _site/regression-demo
+          cp -r examples/output/golden _site/golden
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

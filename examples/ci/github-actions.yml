@@ -1,0 +1,88 @@
+# Plimsoll agent-trace gate — copy-paste example for your own repo.
+#
+# This workflow runs Plimsoll against your agent's execution traces on every
+# pull request and surfaces the results across all four CI surfaces:
+#
+#   1. Step summary  — Plimsoll writes a Markdown summary to the job page itself.
+#   2. Security tab  — the SARIF report is uploaded as code-scanning results.
+#   3. Check run     — the JUnit report is rendered as a checks UI with each finding.
+#   4. PR comment    — a sticky comment posts the report.md straight onto the PR.
+#
+# The `plimsoll run` step IS the gate: a non-zero exit (findings or tool error)
+# fails the job. The reporting steps below use `if: always()` so they still publish
+# evidence on a failing gate — that is exactly when you want to see it.
+#
+# All paths here are PLACEHOLDERS. Point --input/--baseline/--policy at your own
+# traces and policy, and adapt the trigger to taste.
+
+name: plimsoll-gate
+
+on:
+  pull_request:
+
+# Minimal permissions, scoped to exactly what the reporting steps below need.
+permissions:
+  contents: read          # checkout
+  security-events: write  # upload SARIF to the Security tab
+  checks: write           # publish the JUnit check run
+  pull-requests: write    # post the sticky PR comment
+
+jobs:
+  plimsoll:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Plimsoll
+        # Once published you can use: pip install plimsoll
+        run: python -m pip install -e .
+
+      # --- The gate -----------------------------------------------------------
+      # This produces plimsoll-out/report.{sarif.json,junit.xml,md,html,json} and
+      # exits 1 when there are findings (failing the job), 2 on a tool error,
+      # 0 when clean. Add --exit-zero for an advisory (non-blocking) run.
+      - name: Run Plimsoll gate
+        run: |
+          plimsoll run \
+            --input traces/ \
+            --policy policy.json \
+            --baseline baseline/ \
+            --out plimsoll-out \
+            --sarif plimsoll-out/report.sarif.json \
+            --junit plimsoll-out/report.junit.xml \
+            --md plimsoll-out/report.md
+
+      # --- Surface 1: Step summary -------------------------------------------
+      # No extra step is required: when running inside Actions, Plimsoll
+      # automatically appends its Markdown summary to $GITHUB_STEP_SUMMARY.
+      # If you ever need to do it explicitly (e.g. a wrapper swallows the env),
+      # the fallback is a one-liner:
+      #   cat plimsoll-out/report.md >> "$GITHUB_STEP_SUMMARY"
+
+      # --- Surface 2: SARIF -> Security tab ----------------------------------
+      - name: Upload SARIF to the Security tab
+        if: always() && hashFiles('plimsoll-out/report.sarif.json') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: plimsoll-out/report.sarif.json
+
+      # --- Surface 3: JUnit -> Check run -------------------------------------
+      - name: Publish JUnit check run
+        if: always()
+        uses: dorny/test-reporter@v3
+        with:
+          name: Plimsoll findings
+          path: plimsoll-out/report.junit.xml
+          reporter: java-junit
+
+      # --- Surface 4: Sticky PR comment --------------------------------------
+      - name: Post sticky PR comment
+        if: always()
+        uses: marocchino/sticky-pull-request-comment@v3
+        with:
+          header: plimsoll
+          path: plimsoll-out/report.md
