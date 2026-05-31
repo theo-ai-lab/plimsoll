@@ -1,0 +1,72 @@
+{
+  "resourceSpans": [
+    {
+      "resource": {
+        "attributes": [
+          {"key": "service.name", "value": {"stringValue": "plimsoll-fixture"}}
+        ]
+      },
+      "scopeSpans": [
+        {
+          "scope": {"name": "example-agent"},
+          "spans": [
+            {
+              "traceId": "0af7651916cd43dd8448eb211c80319c",
+              "spanId": "1111111111111111",
+              "name": "read ticket",
+              "kind": "INTERNAL",
+              "startTimeUnixNano": "1715900000000000000",
+              "endTimeUnixNano": "1715900000110000000",
+              "status": {"code": "STATUS_CODE_OK"},
+              "attributes": [
+                {"key": "plimsoll.case_id", "value": {"stringValue": "ticket-triage"}},
+                {"key": "plimsoll.run_id", "value": {"stringValue": "otel-candidate-2026-05-17"}},
+                {"key": "plimsoll.expected_output", "value": {"stringValue": "refund policy mismatch"}},
+                {"key": "plimsoll.final_output", "value": {"stringValue": "The user issue is a refund policy mismatch. Route to billing ops."}},
+                {"key": "gen_ai.operation.name", "value": {"stringValue": "execute_tool"}},
+                {"key": "gen_ai.tool.name", "value": {"stringValue": "read_ticket"}},
+                {"key": "plimsoll.input", "value": {"stringValue": "{\"ticket_id\":\"T-1042\"}"}},
+                {"key": "plimsoll.output", "value": {"stringValue": "{\"subject\":\"Refund policy mismatch\"}"}}
+              ]
+            },
+            {
+              "traceId": "0af7651916cd43dd8448eb211c80319c",
+              "spanId": "2222222222222222",
+              "name": "search docs",
+              "kind": "CLIENT",
+              "startTimeUnixNano": "1715900000118000000",
+              "endTimeUnixNano": "1715900000390000000",
+              "status": {"code": "STATUS_CODE_OK"},
+              "attributes": [
+                {"key": "gen_ai.operation.name", "value": {"stringValue": "execute_tool"}},
+                {"key": "gen_ai.tool.name", "value": {"stringValue": "search_docs"}},
+                {"key": "plimsoll.input", "value": {"stringValue": "{\"query\":\"refund policy eligibility\"}"}},
+                {"key": "plimsoll.output", "value": {"stringValue": "{\"doc\":\"billing_refunds.md\"}"}}
+              ]
+            },
+            {
+              "traceId": "0af7651916cd43dd8448eb211c80319c",
+              "spanId": "3333333333333333",
+              "name": "chat local-model",
+              "kind": "CLIENT",
+              "startTimeUnixNano": "1715900000400000000",
+              "endTimeUnixNano": "1715900000840000000",
+              "status": {"code": "STATUS_CODE_OK"},
+              "attributes": [
+                {"key": "gen_ai.operation.name", "value": {"stringValue": "summarize"}},
+                {"key": "gen_ai.tool.name", "value": {"stringValue": "summarize"}},
+                {"key": "gen_ai.provider.name", "value": {"stringValue": "local"}},
+                {"key": "gen_ai.request.model", "value": {"stringValue": "fixture-model"}},
+                {"key": "gen_ai.usage.input_tokens", "value": {"intValue": 274}},
+                {"key": "gen_ai.usage.output_tokens", "value": {"intValue": 81}},
+                {"key": "estimated_cost_usd", "value": {"doubleValue": 0.0037}},
+                {"key": "plimsoll.output", "value": {"stringValue": "refund policy mismatch"}}
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+

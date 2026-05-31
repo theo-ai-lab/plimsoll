@@ -1,0 +1,108 @@
+{
+  "sources": [
+    {
+      "format": "otel",
+      "fixture": "examples/traces/otel_ticket_triage.json",
+      "source_name": "OpenTelemetry trace and GenAI semantic conventions",
+      "source_url": "https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-spans/",
+      "validated_fields": [
+        "resourceSpans[].scopeSpans[].spans[]",
+        "traceId",
+        "spanId",
+        "name",
+        "kind",
+        "status",
+        "startTimeUnixNano",
+        "endTimeUnixNano",
+        "gen_ai.operation.name",
+        "gen_ai.tool.name",
+        "gen_ai.usage.input_tokens",
+        "gen_ai.usage.output_tokens"
+      ],
+      "claim": "Fixture follows an OTel-shaped JSON export subset and GenAI attribute names used by Plimsoll."
+    },
+    {
+      "format": "openinference",
+      "fixture": "examples/traces/openinference_ticket_triage.json",
+      "source_name": "OpenInference semantic conventions",
+      "source_url": "https://arize-ai.github.io/openinference/spec/semantic_conventions.html",
+      "validated_fields": [
+        "openinference.span.kind",
+        "tool.name",
+        "llm.token_count.prompt",
+        "llm.token_count.completion"
+      ],
+      "claim": "Fixture uses OpenInference-style attributes on OTel-shaped spans."
+    },
+    {
+      "format": "openinference",
+      "fixture": "examples/traces/real_openinference_like_ticket_triage.json",
+      "source_name": "OpenInference semantic conventions (sanitized real-shaped fixture)",
+      "source_url": "https://arize-ai.github.io/openinference/spec/semantic_conventions.html",
+      "validated_fields": [
+        "resourceSpans[].resource.attributes (service.name, telemetry.sdk.*)",
+        "scopeSpans[].scope (instrumentation name + version)",
+        "parentSpanId hierarchy",
+        "openinference.span.kind (AGENT, TOOL, LLM)",
+        "tool.name, tool.description",
+        "llm.system, llm.model_name, llm.invocation_parameters",
+        "llm.token_count.prompt/completion/total",
+        "input.value, output.value, *.mime_type"
+      ],
+      "claim": "Sanitized, real-shaped OpenInference export with an AGENT/TOOL/LLM span hierarchy, resource metadata, scope info, parent-span linkage, and full llm.*/tool.* attribute coverage. Structurally modeled after public OpenInference documentation; not exported from any third-party deployment and contains no real user data."
+    },
+    {
+      "format": "openai-agents",
+      "fixture": "examples/traces/openai_agents_ticket_triage.json",
+      "source_name": "OpenAI Agents SDK tracing docs",
+      "source_url": "https://openai.github.io/openai-agents-python/tracing/",
+      "validated_fields": [
+        "trace_id",
+        "metadata",
+        "spans[]",
+        "span_id/id",
+        "started_at",
+        "ended_at",
+        "span_data/data",
+        "usage"
+      ],
+      "claim": "Fixture mirrors documented trace/span concepts and sensitive-data caveats without invoking the SDK."
+    },
+    {
+      "format": "langgraph",
+      "fixture": "examples/traces/langgraph_ticket_triage.json",
+      "source_name": "LangGraph event-style workflow tracing concepts",
+      "source_url": "https://langchain-ai.github.io/langgraph/",
+      "validated_fields": [
+        "events[]",
+        "node",
+        "tool",
+        "start_ms",
+        "end_ms",
+        "input",
+        "output"
+      ],
+      "claim": "Fixture is an event/node/tool local JSON shape for exercising Plimsoll's LangGraph-style adapter."
+    },
+    {
+      "format": "otel",
+      "fixture": "examples/access-request/traces/real/clean.otel.json",
+      "policy": "examples/access-request/policies/access-control-policy.json",
+      "baseline": "examples/access-request/traces/real/clean.otel.json",
+      "baseline_format": "otel",
+      "expected_tools": ["manager_review", "security_review", "grant_access"],
+      "expected_tokens": 303,
+      "source_name": "Real pydantic-ai OpenTelemetry export (offline FunctionModel run)",
+      "source_url": "https://ai.pydantic.dev/",
+      "validated_fields": [
+        "resourceSpans[].scopeSpans[].scope (pydantic-ai + version)",
+        "gen_ai.operation.name (invoke_agent, chat, execute_tool)",
+        "gen_ai.tool.name",
+        "gen_ai.usage.input_tokens / gen_ai.usage.output_tokens",
+        "gen_ai.request.model, gen_ai.provider.name"
+      ],
+      "claim": "Spans emitted by pydantic-ai 1.104.0's built-in GenAI OpenTelemetry instrumentation during an offline FunctionModel run (no network, no API key, no user data). Ingested by Plimsoll's generic OTel adapter with no framework-specific code; span IDs and timestamps are normalized for reproducibility while span structure, gen_ai attributes, tool sequence, and token usage are verbatim from the instrumentation. Regenerate with examples/access-request/build_real_otel_trace.py."
+    }
+  ]
+}
+

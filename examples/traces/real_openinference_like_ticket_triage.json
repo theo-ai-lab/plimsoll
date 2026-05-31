@@ -1,0 +1,103 @@
+{
+  "resourceSpans": [
+    {
+      "resource": {
+        "attributes": [
+          {"key": "service.name", "value": {"stringValue": "support-triage-agent"}},
+          {"key": "service.version", "value": {"stringValue": "1.4.2"}},
+          {"key": "telemetry.sdk.name", "value": {"stringValue": "opentelemetry"}},
+          {"key": "telemetry.sdk.language", "value": {"stringValue": "python"}},
+          {"key": "telemetry.sdk.version", "value": {"stringValue": "1.27.0"}},
+          {"key": "openinference.project.name", "value": {"stringValue": "support-triage"}}
+        ]
+      },
+      "scopeSpans": [
+        {
+          "scope": {
+            "name": "openinference.instrumentation.openai",
+            "version": "0.1.30"
+          },
+          "spans": [
+            {
+              "traceId": "00112233445566778899aabbccddeeff",
+              "spanId": "0000000000000001",
+              "name": "support_triage_agent",
+              "kind": "INTERNAL",
+              "startTimeUnixNano": "1715900000000000000",
+              "endTimeUnixNano": "1715900000840000000",
+              "status": {"code": "STATUS_CODE_OK"},
+              "attributes": [
+                {"key": "openinference.span.kind", "value": {"stringValue": "AGENT"}},
+                {"key": "plimsoll.case_id", "value": {"stringValue": "ticket-triage"}},
+                {"key": "plimsoll.run_id", "value": {"stringValue": "real-shaped-openinference-2026-05-17"}},
+                {"key": "plimsoll.expected_output", "value": {"stringValue": "refund policy mismatch"}},
+                {"key": "plimsoll.final_output", "value": {"stringValue": "The user issue is a refund policy mismatch. Route to billing ops with the policy excerpt."}},
+                {"key": "input.value", "value": {"stringValue": "{\"ticket_id\":\"T-1042\"}"}},
+                {"key": "input.mime_type", "value": {"stringValue": "application/json"}},
+                {"key": "output.value", "value": {"stringValue": "refund policy mismatch"}},
+                {"key": "output.mime_type", "value": {"stringValue": "text/plain"}}
+              ]
+            },
+            {
+              "traceId": "00112233445566778899aabbccddeeff",
+              "spanId": "0000000000000002",
+              "parentSpanId": "0000000000000001",
+              "name": "read_ticket",
+              "kind": "INTERNAL",
+              "startTimeUnixNano": "1715900000010000000",
+              "endTimeUnixNano": "1715900000118000000",
+              "status": {"code": "STATUS_CODE_OK"},
+              "attributes": [
+                {"key": "openinference.span.kind", "value": {"stringValue": "TOOL"}},
+                {"key": "tool.name", "value": {"stringValue": "read_ticket"}},
+                {"key": "tool.description", "value": {"stringValue": "Fetch the ticket payload for a given ticket id."}},
+                {"key": "input.value", "value": {"stringValue": "{\"ticket_id\":\"T-1042\"}"}},
+                {"key": "output.value", "value": {"stringValue": "{\"subject\":\"Refund policy mismatch\",\"priority\":\"normal\"}"}}
+              ]
+            },
+            {
+              "traceId": "00112233445566778899aabbccddeeff",
+              "spanId": "0000000000000003",
+              "parentSpanId": "0000000000000001",
+              "name": "search_docs",
+              "kind": "INTERNAL",
+              "startTimeUnixNano": "1715900000120000000",
+              "endTimeUnixNano": "1715900000392000000",
+              "status": {"code": "STATUS_CODE_OK"},
+              "attributes": [
+                {"key": "openinference.span.kind", "value": {"stringValue": "TOOL"}},
+                {"key": "tool.name", "value": {"stringValue": "search_docs"}},
+                {"key": "tool.description", "value": {"stringValue": "Retrieve relevant policy documents from the internal knowledge base."}},
+                {"key": "input.value", "value": {"stringValue": "{\"query\":\"refund policy eligibility\"}"}},
+                {"key": "output.value", "value": {"stringValue": "{\"docs\":[\"billing/refund_policy.md\"]}"}}
+              ]
+            },
+            {
+              "traceId": "00112233445566778899aabbccddeeff",
+              "spanId": "0000000000000004",
+              "parentSpanId": "0000000000000001",
+              "name": "summarize",
+              "kind": "CLIENT",
+              "startTimeUnixNano": "1715900000400000000",
+              "endTimeUnixNano": "1715900000840000000",
+              "status": {"code": "STATUS_CODE_OK"},
+              "attributes": [
+                {"key": "openinference.span.kind", "value": {"stringValue": "LLM"}},
+                {"key": "tool.name", "value": {"stringValue": "summarize"}},
+                {"key": "llm.system", "value": {"stringValue": "openai"}},
+                {"key": "llm.model_name", "value": {"stringValue": "gpt-4o-mini"}},
+                {"key": "llm.invocation_parameters", "value": {"stringValue": "{\"temperature\":0.2,\"max_tokens\":256}"}},
+                {"key": "llm.token_count.prompt", "value": {"intValue": 274}},
+                {"key": "llm.token_count.completion", "value": {"intValue": 81}},
+                {"key": "llm.token_count.total", "value": {"intValue": 355}},
+                {"key": "estimated_cost_usd", "value": {"doubleValue": 0.0037}},
+                {"key": "input.value", "value": {"stringValue": "Summarize the ticket and the matching policy doc into a routing decision."}},
+                {"key": "output.value", "value": {"stringValue": "refund policy mismatch"}}
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

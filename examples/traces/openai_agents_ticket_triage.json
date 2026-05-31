@@ -1,0 +1,57 @@
+{
+  "trace_id": "oa-trace-ticket-triage",
+  "name": "Billing triage agent",
+  "metadata": {
+    "run_id": "openai-agents-candidate-2026-05-17",
+    "case_id": "ticket-triage",
+    "expected_output": "refund policy mismatch",
+    "final_output": "The user issue is a refund policy mismatch. Route to billing ops."
+  },
+  "spans": [
+    {
+      "id": "oa-1",
+      "name": "read ticket",
+      "span_type": "tool",
+      "status": "ok",
+      "started_at": "2026-05-17T20:00:00.000Z",
+      "ended_at": "2026-05-17T20:00:00.110Z",
+      "data": {
+        "tool_name": "read_ticket",
+        "input": {"ticket_id": "T-1042"},
+        "output": {"subject": "Refund policy mismatch"}
+      }
+    },
+    {
+      "id": "oa-2",
+      "name": "search docs",
+      "span_type": "tool",
+      "status": "ok",
+      "started_at": "2026-05-17T20:00:00.118Z",
+      "ended_at": "2026-05-17T20:00:00.390Z",
+      "data": {
+        "tool_name": "search_docs",
+        "input": {"query": "refund policy eligibility"},
+        "output": {"doc": "billing_refunds.md"}
+      }
+    },
+    {
+      "id": "oa-3",
+      "name": "summarize",
+      "span_type": "generation",
+      "status": "ok",
+      "started_at": "2026-05-17T20:00:00.400Z",
+      "ended_at": "2026-05-17T20:00:00.840Z",
+      "data": {
+        "tool_name": "summarize",
+        "input": {"ticket": "T-1042", "doc": "billing_refunds.md"},
+        "output": "refund policy mismatch",
+        "usage": {
+          "input_tokens": 274,
+          "output_tokens": 81
+        },
+        "estimated_cost_usd": 0.0037
+      }
+    }
+  ]
+}
+

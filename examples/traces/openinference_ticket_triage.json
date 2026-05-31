@@ -1,0 +1,64 @@
+{
+  "resourceSpans": [
+    {
+      "scopeSpans": [
+        {
+          "spans": [
+            {
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+              "spanId": "4444444444444444",
+              "name": "read_ticket",
+              "kind": "INTERNAL",
+              "startTimeUnixNano": "1715900000000000000",
+              "endTimeUnixNano": "1715900000110000000",
+              "status": {"code": "STATUS_CODE_OK"},
+              "attributes": [
+                {"key": "plimsoll.case_id", "value": {"stringValue": "ticket-triage"}},
+                {"key": "plimsoll.run_id", "value": {"stringValue": "openinference-candidate-2026-05-17"}},
+                {"key": "plimsoll.expected_output", "value": {"stringValue": "refund policy mismatch"}},
+                {"key": "plimsoll.final_output", "value": {"stringValue": "The user issue is a refund policy mismatch. Route to billing ops."}},
+                {"key": "openinference.span.kind", "value": {"stringValue": "TOOL"}},
+                {"key": "tool.name", "value": {"stringValue": "read_ticket"}},
+                {"key": "plimsoll.input", "value": {"stringValue": "{\"ticket_id\":\"T-1042\"}"}},
+                {"key": "plimsoll.output", "value": {"stringValue": "{\"subject\":\"Refund policy mismatch\"}"}}
+              ]
+            },
+            {
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+              "spanId": "5555555555555555",
+              "name": "search_docs",
+              "kind": "INTERNAL",
+              "startTimeUnixNano": "1715900000118000000",
+              "endTimeUnixNano": "1715900000390000000",
+              "status": {"code": "STATUS_CODE_OK"},
+              "attributes": [
+                {"key": "openinference.span.kind", "value": {"stringValue": "TOOL"}},
+                {"key": "tool.name", "value": {"stringValue": "search_docs"}},
+                {"key": "plimsoll.input", "value": {"stringValue": "{\"query\":\"refund policy eligibility\"}"}},
+                {"key": "plimsoll.output", "value": {"stringValue": "{\"doc\":\"billing_refunds.md\"}"}}
+              ]
+            },
+            {
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+              "spanId": "6666666666666666",
+              "name": "summarize",
+              "kind": "CLIENT",
+              "startTimeUnixNano": "1715900000400000000",
+              "endTimeUnixNano": "1715900000840000000",
+              "status": {"code": "STATUS_CODE_OK"},
+              "attributes": [
+                {"key": "openinference.span.kind", "value": {"stringValue": "LLM"}},
+                {"key": "tool.name", "value": {"stringValue": "summarize"}},
+                {"key": "llm.token_count.prompt", "value": {"intValue": 274}},
+                {"key": "llm.token_count.completion", "value": {"intValue": 81}},
+                {"key": "estimated_cost_usd", "value": {"doubleValue": 0.0037}},
+                {"key": "plimsoll.output", "value": {"stringValue": "refund policy mismatch"}}
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+
