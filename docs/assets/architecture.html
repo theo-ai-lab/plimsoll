@@ -1,0 +1,81 @@
+<!doctype html>
+<!--
+  Source for docs/assets/architecture.png. Hand-authored from Plimsoll's real
+  pipeline (adapters -> rules -> reports -> CI exit codes); rendered to PNG with
+  headless Chrome. Not generated art. Regenerate the PNG with:
+    chrome-headless-shell --headless --screenshot=docs/assets/architecture.png \
+      --window-size=1180,430 --force-device-scale-factor=2 docs/assets/architecture.html
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  :root {
+    --ink: #14171a; --sub: #6b7280; --line: #d4d7dc; --arrow: #9aa0a8; --bg: #ffffff;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); }
+  .wrap { width: 1140px; padding: 32px 36px 26px; font-family: var(--mono); color: var(--ink); }
+  .cap { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--sub); margin: 0 0 20px; }
+  .cap b { color: var(--ink); font-weight: 600; letter-spacing: .04em; }
+  .flow { display: flex; align-items: stretch; gap: 0; }
+  .stage { flex: 1; border: 1px solid var(--line); border-radius: 8px; padding: 14px 14px 15px; min-width: 0; }
+  .stage.cfg { border-style: dashed; }
+  .stage .t { font-size: 16.5px; font-weight: 600; line-height: 1.25; }
+  .stage .s { font-size: 14px; color: var(--sub); margin-top: 8px; line-height: 1.5; }
+  .stage .tag { font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--sub); display: block; margin-bottom: 6px; }
+  .arrow { flex: 0 0 30px; display: flex; align-items: center; justify-content: center; color: var(--arrow); font-size: 21px; }
+  .rule { border: 0; border-top: 1px solid var(--line); margin: 24px 0 16px; }
+  .guarantees { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .glabel { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--sub); margin-right: 4px; }
+  .pill { border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; font-size: 13.5px; color: var(--ink); white-space: nowrap; }
+  .pill .x { color: var(--sub); margin-right: 6px; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <p class="cap"><b>Plimsoll</b> &nbsp;·&nbsp; how it works</p>
+    <div class="flow">
+      <div class="stage">
+        <div class="t">Recorded<br>agent trace</div>
+        <div class="s">native · OTel · OpenInference · LangGraph · OpenAI-Agents (JSON)</div>
+      </div>
+      <div class="arrow">&rarr;</div>
+      <div class="stage">
+        <div class="t">Adapter</div>
+        <div class="s">normalize to a common TraceRun / Span model</div>
+      </div>
+      <div class="arrow">&rarr;</div>
+      <div class="stage cfg">
+        <span class="tag">inputs</span>
+        <div class="t">Policy + baseline</div>
+        <div class="s">policy.json · known-good trace</div>
+      </div>
+      <div class="arrow">&rarr;</div>
+      <div class="stage">
+        <div class="t">Deterministic<br>rules</div>
+        <div class="s">ordering · tools · budgets · PII/secret · drift</div>
+      </div>
+      <div class="arrow">&rarr;</div>
+      <div class="stage">
+        <div class="t">Reports</div>
+        <div class="s">JSON · HTML · JUnit · SARIF · Markdown</div>
+      </div>
+      <div class="arrow">&rarr;</div>
+      <div class="stage">
+        <div class="t">CI pass / fail</div>
+        <div class="s">exit 0 clean · 1 findings · 2 error</div>
+      </div>
+    </div>
+    <hr class="rule">
+    <div class="guarantees">
+      <span class="glabel">guarantees</span>
+      <span class="pill"><span class="x">✕</span>No LLM judge</span>
+      <span class="pill"><span class="x">✕</span>No account</span>
+      <span class="pill"><span class="x">✕</span>No network</span>
+      <span class="pill"><span class="x">✓</span>Zero runtime dependencies</span>
+    </div>
+  </div>
+</body>
+</html>
