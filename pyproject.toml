@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "plimsoll"
+version = "0.9.0"
+description = "Local-first regression checks for AI agent execution traces."
+requires-python = ">=3.11"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Plimsoll contributors" }]
+
+[project.scripts]
+plimsoll = "plimsoll.cli:main"
+
+[project.optional-dependencies]
+dev = ["ruff>=0.6"]
+# Optional, dev-only: needed solely to regenerate the real OpenTelemetry trace fixtures
+# (examples/access-request/build_real_otel_trace.py). NOT a runtime dependency — the
+# committed JSON fixtures are what Plimsoll ingests, and the core CLI has zero deps.
+realtraces = ["pydantic-ai>=1.0", "opentelemetry-sdk>=1.30"]
+
+[tool.setuptools.packages.find]
+include = ["plimsoll*"]
+exclude = ["tests*", "runs*", "examples*", "scripts*"]
+
+[tool.plimsoll]
+default_sample_out = "runs/sample"
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-exclude = ["runs", "examples/output"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP"]
+ignore = ["E501"]  # line length is managed by the formatter; long CSS/HTML string literals are exempt
