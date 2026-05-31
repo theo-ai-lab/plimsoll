@@ -1,0 +1,22 @@
+{
+  "allowed_tools": [
+    "read_ticket",
+    "search_docs",
+    "summarize"
+  ],
+  "expected_output_mode": "contains",
+  "forbidden_tools": [],
+  "max_duration_ms": 1009,
+  "max_estimated_cost_usd": 0.00444,
+  "max_repeated_action_count": 1,
+  "max_steps": 4,
+  "max_tokens": 427,
+  "max_tool_sequence_distance": 1,
+  "pii_patterns": [],
+  "required_tools": [
+    "read_ticket",
+    "search_docs",
+    "summarize"
+  ],
+  "secret_patterns": []
+}

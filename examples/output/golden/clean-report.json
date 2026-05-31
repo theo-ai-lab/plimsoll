@@ -1,0 +1,78 @@
+{
+  "cases": [
+    {
+      "case_id": "ticket-triage",
+      "findings": [],
+      "metrics": {
+        "duration_ms": 840,
+        "estimated_cost_usd": 0.0037,
+        "steps": 3,
+        "tokens": 355,
+        "tool_sequence": [
+          "read_ticket",
+          "search_docs",
+          "summarize"
+        ],
+        "tool_steps": 3
+      },
+      "passed": true,
+      "run_id": "candidate-2026-05-17",
+      "score": 100,
+      "trajectory_diff": {
+        "final_output": {
+          "baseline": "The user issue is a refund policy mismatch. Route to billing ops with the policy excerpt.",
+          "changed": true,
+          "current": "The user issue is a refund policy mismatch. Route to billing ops."
+        },
+        "metrics_delta": {
+          "duration_ms": -50,
+          "estimated_cost_usd": -0.0003,
+          "steps": 0,
+          "tokens": -27
+        },
+        "must_precede": [],
+        "steps": [
+          {
+            "delta_ms": -10,
+            "delta_tokens": 0,
+            "op": "equal",
+            "tool": "read_ticket"
+          },
+          {
+            "delta_ms": -13,
+            "delta_tokens": 0,
+            "op": "equal",
+            "tool": "search_docs"
+          },
+          {
+            "delta_ms": -30,
+            "delta_tokens": -27,
+            "op": "equal",
+            "tool": "summarize"
+          }
+        ],
+        "tool_sequence": {
+          "baseline": [
+            "read_ticket",
+            "search_docs",
+            "summarize"
+          ],
+          "changes": [],
+          "current": [
+            "read_ticket",
+            "search_docs",
+            "summarize"
+          ]
+        }
+      }
+    }
+  ],
+  "summary": {
+    "average_score": 100.0,
+    "cases": 1,
+    "failed": 0,
+    "pass_rate": 1.0,
+    "passed": 1,
+    "severity_counts": {}
+  }
+}
