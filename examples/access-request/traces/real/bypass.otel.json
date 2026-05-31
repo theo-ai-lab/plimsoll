@@ -1,0 +1,319 @@
+{
+  "plimsoll": {
+    "case_id": "access-request-real-bypass",
+    "run_id": "access-request-real-bypass",
+    "final_output": "Access granted to the billing dashboard for u-42."
+  },
+  "resourceSpans": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "access-request-agent"
+            }
+          },
+          {
+            "key": "telemetry.sdk.language",
+            "value": {
+              "stringValue": "python"
+            }
+          }
+        ]
+      },
+      "scopeSpans": [
+        {
+          "scope": {
+            "name": "pydantic-ai",
+            "version": "1.104.0"
+          },
+          "spans": [
+            {
+              "traceId": "00000000000000000000000000000001",
+              "spanId": "0000000000000001",
+              "name": "agent run",
+              "kind": "SPAN_KIND_INTERNAL",
+              "startTimeUnixNano": "1700000000000000000",
+              "endTimeUnixNano": "1700000000060000000",
+              "status": {
+                "code": "STATUS_CODE_OK"
+              },
+              "attributes": [
+                {
+                  "key": "gen_ai.agent.name",
+                  "value": {
+                    "stringValue": "access_request_agent"
+                  }
+                },
+                {
+                  "key": "gen_ai.operation.name",
+                  "value": {
+                    "stringValue": "invoke_agent"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.input_tokens",
+                  "value": {
+                    "intValue": 196
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.output_tokens",
+                  "value": {
+                    "intValue": 19
+                  }
+                }
+              ]
+            },
+            {
+              "traceId": "00000000000000000000000000000001",
+              "spanId": "0000000000000002",
+              "name": "chat function:model_fn:",
+              "kind": "SPAN_KIND_CLIENT",
+              "startTimeUnixNano": "1700000000010000000",
+              "endTimeUnixNano": "1700000000014000000",
+              "status": {
+                "code": "STATUS_CODE_OK"
+              },
+              "attributes": [
+                {
+                  "key": "gen_ai.agent.name",
+                  "value": {
+                    "stringValue": "access_request_agent"
+                  }
+                },
+                {
+                  "key": "gen_ai.operation.name",
+                  "value": {
+                    "stringValue": "chat"
+                  }
+                },
+                {
+                  "key": "gen_ai.provider.name",
+                  "value": {
+                    "stringValue": "function"
+                  }
+                },
+                {
+                  "key": "gen_ai.request.model",
+                  "value": {
+                    "stringValue": "function:model_fn:"
+                  }
+                },
+                {
+                  "key": "gen_ai.response.model",
+                  "value": {
+                    "stringValue": "function:model_fn:"
+                  }
+                },
+                {
+                  "key": "gen_ai.system",
+                  "value": {
+                    "stringValue": "function"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.input_tokens",
+                  "value": {
+                    "intValue": 60
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.output_tokens",
+                  "value": {
+                    "intValue": 2
+                  }
+                }
+              ]
+            },
+            {
+              "traceId": "00000000000000000000000000000001",
+              "spanId": "0000000000000003",
+              "name": "running tool",
+              "kind": "SPAN_KIND_INTERNAL",
+              "startTimeUnixNano": "1700000000020000000",
+              "endTimeUnixNano": "1700000000022000000",
+              "status": {
+                "code": "STATUS_CODE_OK"
+              },
+              "attributes": [
+                {
+                  "key": "gen_ai.agent.name",
+                  "value": {
+                    "stringValue": "access_request_agent"
+                  }
+                },
+                {
+                  "key": "gen_ai.operation.name",
+                  "value": {
+                    "stringValue": "execute_tool"
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.name",
+                  "value": {
+                    "stringValue": "manager_review"
+                  }
+                }
+              ]
+            },
+            {
+              "traceId": "00000000000000000000000000000001",
+              "spanId": "0000000000000004",
+              "name": "chat function:model_fn:",
+              "kind": "SPAN_KIND_CLIENT",
+              "startTimeUnixNano": "1700000000030000000",
+              "endTimeUnixNano": "1700000000034000000",
+              "status": {
+                "code": "STATUS_CODE_OK"
+              },
+              "attributes": [
+                {
+                  "key": "gen_ai.agent.name",
+                  "value": {
+                    "stringValue": "access_request_agent"
+                  }
+                },
+                {
+                  "key": "gen_ai.operation.name",
+                  "value": {
+                    "stringValue": "chat"
+                  }
+                },
+                {
+                  "key": "gen_ai.provider.name",
+                  "value": {
+                    "stringValue": "function"
+                  }
+                },
+                {
+                  "key": "gen_ai.request.model",
+                  "value": {
+                    "stringValue": "function:model_fn:"
+                  }
+                },
+                {
+                  "key": "gen_ai.response.model",
+                  "value": {
+                    "stringValue": "function:model_fn:"
+                  }
+                },
+                {
+                  "key": "gen_ai.system",
+                  "value": {
+                    "stringValue": "function"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.input_tokens",
+                  "value": {
+                    "intValue": 65
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.output_tokens",
+                  "value": {
+                    "intValue": 4
+                  }
+                }
+              ]
+            },
+            {
+              "traceId": "00000000000000000000000000000001",
+              "spanId": "0000000000000005",
+              "name": "running tool",
+              "kind": "SPAN_KIND_INTERNAL",
+              "startTimeUnixNano": "1700000000040000000",
+              "endTimeUnixNano": "1700000000042000000",
+              "status": {
+                "code": "STATUS_CODE_OK"
+              },
+              "attributes": [
+                {
+                  "key": "gen_ai.agent.name",
+                  "value": {
+                    "stringValue": "access_request_agent"
+                  }
+                },
+                {
+                  "key": "gen_ai.operation.name",
+                  "value": {
+                    "stringValue": "execute_tool"
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.name",
+                  "value": {
+                    "stringValue": "grant_access"
+                  }
+                }
+              ]
+            },
+            {
+              "traceId": "00000000000000000000000000000001",
+              "spanId": "0000000000000006",
+              "name": "chat function:model_fn:",
+              "kind": "SPAN_KIND_CLIENT",
+              "startTimeUnixNano": "1700000000050000000",
+              "endTimeUnixNano": "1700000000054000000",
+              "status": {
+                "code": "STATUS_CODE_OK"
+              },
+              "attributes": [
+                {
+                  "key": "gen_ai.agent.name",
+                  "value": {
+                    "stringValue": "access_request_agent"
+                  }
+                },
+                {
+                  "key": "gen_ai.operation.name",
+                  "value": {
+                    "stringValue": "chat"
+                  }
+                },
+                {
+                  "key": "gen_ai.provider.name",
+                  "value": {
+                    "stringValue": "function"
+                  }
+                },
+                {
+                  "key": "gen_ai.request.model",
+                  "value": {
+                    "stringValue": "function:model_fn:"
+                  }
+                },
+                {
+                  "key": "gen_ai.response.model",
+                  "value": {
+                    "stringValue": "function:model_fn:"
+                  }
+                },
+                {
+                  "key": "gen_ai.system",
+                  "value": {
+                    "stringValue": "function"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.input_tokens",
+                  "value": {
+                    "intValue": 71
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.output_tokens",
+                  "value": {
+                    "intValue": 13
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
