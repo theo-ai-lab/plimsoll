@@ -1,0 +1,117 @@
+{
+  "case_id": "access-request",
+  "expected_output": "access granted after manager and security review",
+  "final_output": "Access granted after manager and security review for prod-db.",
+  "metadata": {
+    "workflow": "it-access-request"
+  },
+  "run_id": "approved-2026-05-30",
+  "spans": [
+    {
+      "attributes": {
+        "gen_ai.usage.input_tokens": 60,
+        "gen_ai.usage.output_tokens": 30
+      },
+      "end_ms": 120,
+      "input": {
+        "level": "privileged",
+        "resource": "prod-db"
+      },
+      "kind": "tool",
+      "name": "intake request",
+      "output": null,
+      "span_id": "s1",
+      "start_ms": 0,
+      "status": "ok",
+      "tool_name": "intake_request"
+    },
+    {
+      "attributes": {
+        "gen_ai.usage.input_tokens": 60,
+        "gen_ai.usage.output_tokens": 30
+      },
+      "end_ms": 240,
+      "input": null,
+      "kind": "tool",
+      "name": "classify risk",
+      "output": {
+        "tier": "high"
+      },
+      "span_id": "s2",
+      "start_ms": 120,
+      "status": "ok",
+      "tool_name": "classify_risk"
+    },
+    {
+      "attributes": {
+        "gen_ai.usage.input_tokens": 60,
+        "gen_ai.usage.output_tokens": 30
+      },
+      "end_ms": 360,
+      "input": null,
+      "kind": "tool",
+      "name": "policy lookup",
+      "output": {
+        "requires": [
+          "manager_review",
+          "security_review"
+        ]
+      },
+      "span_id": "s3",
+      "start_ms": 240,
+      "status": "ok",
+      "tool_name": "policy_lookup"
+    },
+    {
+      "attributes": {
+        "gen_ai.usage.input_tokens": 60,
+        "gen_ai.usage.output_tokens": 30
+      },
+      "end_ms": 480,
+      "input": null,
+      "kind": "tool",
+      "name": "manager review",
+      "output": {
+        "approved": true
+      },
+      "span_id": "s4",
+      "start_ms": 360,
+      "status": "ok",
+      "tool_name": "manager_review"
+    },
+    {
+      "attributes": {
+        "gen_ai.usage.input_tokens": 60,
+        "gen_ai.usage.output_tokens": 30
+      },
+      "end_ms": 600,
+      "input": null,
+      "kind": "tool",
+      "name": "security review",
+      "output": {
+        "approved": true
+      },
+      "span_id": "s5",
+      "start_ms": 480,
+      "status": "ok",
+      "tool_name": "security_review"
+    },
+    {
+      "attributes": {
+        "gen_ai.usage.input_tokens": 60,
+        "gen_ai.usage.output_tokens": 30
+      },
+      "end_ms": 720,
+      "input": null,
+      "kind": "tool",
+      "name": "grant access",
+      "output": {
+        "resource": "prod-db"
+      },
+      "span_id": "s6",
+      "start_ms": 600,
+      "status": "ok",
+      "tool_name": "grant_access"
+    }
+  ]
+}

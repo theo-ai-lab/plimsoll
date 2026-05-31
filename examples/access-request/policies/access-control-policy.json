@@ -1,0 +1,20 @@
+{
+  "$schema": "../../../docs/policy.schema.json",
+  "version": "1",
+  "allowed_tools": [
+    "intake_request",
+    "classify_risk",
+    "policy_lookup",
+    "manager_review",
+    "security_review",
+    "grant_access",
+    "prepare_request",
+    "escalate"
+  ],
+  "must_precede": [
+    {"before": "manager_review", "after": "security_review"},
+    {"before": "security_review", "after": "grant_access"}
+  ],
+  "expected_output_mode": "contains",
+  "max_steps": 12
+}
