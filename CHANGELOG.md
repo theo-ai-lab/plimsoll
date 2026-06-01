@@ -5,13 +5,6 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-### Added
-
-- Terminal demo recording (`demo/demo.gif`), rendered from the committed vhs tape and
-  embedded at the top of the README.
-
 ## [0.9.0] - 2026-05-31
 
 ### Changed
@@ -36,6 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Terminal demo recording (`demo/demo.gif`), rendered from the committed vhs tape and
+  embedded at the top of the README.
 - `scripts/build_golden.py` regenerates the committed golden reports under
   `examples/output/golden/` deterministically from the CLI.
 - Validation against a **real** agent trace. `examples/access-request/build_real_otel_trace.py`
