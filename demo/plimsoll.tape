@@ -1,7 +1,6 @@
 # Plimsoll demo tape for charmbracelet/vhs.
-# Regenerate the GIF with:  vhs demo/plimsoll.tape
-# The tape is the committed source of truth; the GIF is generated on demand
-# (run the command above) and is not committed.
+# The committed demo/demo.gif is rendered from this tape; regenerate it after
+# changing the demo with:  vhs demo/plimsoll.tape
 
 Output demo/demo.gif
 

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Terminal demo recording (`demo/demo.gif`), rendered from the committed vhs tape and
+  embedded at the top of the README.
+
 ## [0.9.0] - 2026-05-31
 
 ### Changed

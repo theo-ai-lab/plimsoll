@@ -8,6 +8,8 @@
 ![Runtime dependencies: 0](https://img.shields.io/badge/runtime%20deps-0-blue)
 ![Output: JSON · HTML · JUnit · SARIF · Markdown](https://img.shields.io/badge/output-JSON%20%C2%B7%20HTML%20%C2%B7%20JUnit%20%C2%B7%20SARIF%20%C2%B7%20MD-informational)
 
+![Terminal demo: a clean trace passes the gate, then a regressed trace fails with findings broken down by severity](demo/demo.gif)
+
 ![Plimsoll HTML report showing a caught regression](docs/assets/report.png)
 
 ![How Plimsoll works: a recorded agent trace flows through an adapter, is checked against a policy and baseline by deterministic rules, and emits JSON/HTML/JUnit/SARIF/Markdown reports plus a CI pass/fail exit code, fully offline with zero runtime dependencies](docs/assets/architecture.png)
