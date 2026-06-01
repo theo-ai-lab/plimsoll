@@ -187,7 +187,7 @@ Regenerate it with `python scripts/build_access_request_demo.py`. Read [`BEFORE_
 ```bash
 python -m pip install -e '.[dev]'      # adds ruff (the only dev dependency)
 python -m unittest discover -s tests   # 67 tests
-ruff check plimsoll tests
+ruff check .
 python scripts/validate_public_fixtures.py
 ```
 

@@ -35,7 +35,7 @@ python -m unittest discover -s tests
 Lint and compile-check:
 
 ```bash
-ruff check plimsoll tests
+ruff check .
 python -m compileall plimsoll
 ```
 
@@ -81,7 +81,7 @@ for example `feat: add required_tool ordering check` or
 Before opening a pull request, confirm:
 
 - Tests are added or updated and the full suite passes.
-- `ruff check plimsoll tests` is clean.
+- `ruff check .` is clean.
 - No new runtime dependencies were introduced.
 - Documentation and any `CHANGELOG` entries are updated to match the change.
 - Every claim in code, docs, and the PR description is accurate.
