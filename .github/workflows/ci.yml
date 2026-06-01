@@ -14,8 +14,8 @@ jobs:
       matrix:
         python-version: ["3.11", "3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install package and dev deps
@@ -25,8 +25,15 @@ jobs:
       - name: Ruff format check
         run: python -m ruff format --check .
       - name: Unit tests
+        # The tests invoke the CLI on intentional regression fixtures; redirect the
+        # auto-generated GitHub step summary to a temporary file so the job summary
+        # isn't filled with expected FAIL blocks. The step exit code still gates the build.
         run: python -m unittest discover -s tests
+        env:
+          GITHUB_STEP_SUMMARY: ${{ runner.temp }}/plimsoll-selftest-summary.md
       - name: compileall
         run: python -m compileall -q plimsoll tests scripts
       - name: Smoke
         run: python scripts/smoke.py
+        env:
+          GITHUB_STEP_SUMMARY: ${{ runner.temp }}/plimsoll-selftest-summary.md
