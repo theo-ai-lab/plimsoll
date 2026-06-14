@@ -1,0 +1,16 @@
+{
+  "run_id": "candidate-c05",
+  "case_id": "c05-budget-overrun",
+  "expected_output": "refund policy mismatch",
+  "final_output": "The user issue is a refund policy mismatch. Route to billing ops with the policy excerpt.",
+  "metadata": {"scenario": "regression: correct answer, but 7 steps / 2100 tokens / $0.031 -- triple the budget. Note: budgets are MEDIUM severity, so plimsoll reports them and still EXITS 0."},
+  "spans": [
+    {"span_id": "s1", "name": "read ticket", "kind": "tool", "status": "ok", "start_ms": 0, "end_ms": 120, "tool_name": "read_ticket", "input": {"ticket_id": "T-1042"}, "output": {"subject": "Refund policy mismatch"}, "attributes": {}},
+    {"span_id": "s2", "name": "search docs", "kind": "tool", "status": "ok", "start_ms": 125, "end_ms": 410, "tool_name": "search_docs", "input": {"query": "refund policy eligibility"}, "output": {"doc": "billing_refunds.md"}, "attributes": {}},
+    {"span_id": "s3", "name": "search docs again", "kind": "tool", "status": "ok", "start_ms": 415, "end_ms": 700, "tool_name": "search_docs", "input": {"query": "refund window exceptions"}, "output": {"doc": "billing_exceptions.md"}, "attributes": {}},
+    {"span_id": "s4", "name": "search docs more", "kind": "tool", "status": "ok", "start_ms": 705, "end_ms": 980, "tool_name": "search_docs", "input": {"query": "billing dispute terms"}, "output": {"doc": "billing_terms.md"}, "attributes": {}},
+    {"span_id": "s5", "name": "create patch", "kind": "tool", "status": "ok", "start_ms": 985, "end_ms": 1200, "tool_name": "create_patch", "input": {"file": "triage_notes.md"}, "output": {"status": "drafted"}, "attributes": {}},
+    {"span_id": "s6", "name": "summarize draft", "kind": "model", "status": "ok", "start_ms": 1205, "end_ms": 1900, "tool_name": "summarize", "input": {"ticket": "T-1042", "doc": "billing_refunds.md", "pass": "first"}, "output": "draft summary", "attributes": {"gen_ai.usage.input_tokens": 800, "gen_ai.usage.output_tokens": 400, "estimated_cost_usd": 0.018}},
+    {"span_id": "s7", "name": "summarize final", "kind": "model", "status": "ok", "start_ms": 1905, "end_ms": 2500, "tool_name": "summarize", "input": {"ticket": "T-1042", "doc": "billing_terms.md", "pass": "final"}, "output": "refund policy mismatch", "attributes": {"gen_ai.usage.input_tokens": 600, "gen_ai.usage.output_tokens": 300, "estimated_cost_usd": 0.013}}
+  ]
+}

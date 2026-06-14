@@ -113,6 +113,7 @@ This catches the canonical agent-safety failure (performing a privileged action 
 
 - It is **not an LLM judge** and does not evaluate semantic quality — tone, helpfulness, factual grounding, or reasoning quality. Pair it with a judge for those; Plimsoll is the deterministic gate, not the whole eval stack.
 - It is **not an observability platform** like Phoenix, Braintrust, or Langfuse — it has no dashboards, live ingestion, or hosted storage.
+- It is **not the only deterministic, account-free option.** [promptfoo](https://www.promptfoo.dev/docs/configuration/expected-outputs/deterministic/) already ships offline deterministic trajectory assertions (`trajectory:tool-sequence`, `trajectory:tool-args-match`), and Plimsoll's match-mode vocabulary mirrors [agentevals](https://github.com/langchain-ai/agentevals). Plimsoll's edge is packaging and posture — zero-install stdlib, policy-line-anchored SARIF, `must_precede` ordering, retry-drift — not new technique. See [`docs/RELATED_WORK.md`](docs/RELATED_WORK.md) and the runnable [head-to-head benchmark](docs/BENCHMARK_vs_promptfoo.md).
 - The framework adapters below are **documented subset shims for local fixtures**, not full SDK integrations.
 - It checks only the trace fields it receives; missing instrumentation means missing evidence.
 

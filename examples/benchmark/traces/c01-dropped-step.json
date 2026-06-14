@@ -1,0 +1,11 @@
+{
+  "run_id": "candidate-c01",
+  "case_id": "c01-dropped-step",
+  "expected_output": "refund policy mismatch",
+  "final_output": "The user issue is a refund policy mismatch. Route to billing ops.",
+  "metadata": {"scenario": "regression: agent skipped the search_docs grounding step"},
+  "spans": [
+    {"span_id": "s1", "name": "read ticket", "kind": "tool", "status": "ok", "start_ms": 0, "end_ms": 118, "tool_name": "read_ticket", "input": {"ticket_id": "T-1042"}, "output": {"subject": "Refund policy mismatch"}, "attributes": {}},
+    {"span_id": "s2", "name": "summarize", "kind": "model", "status": "ok", "start_ms": 130, "end_ms": 600, "tool_name": "summarize", "input": {"ticket": "T-1042"}, "output": "refund policy mismatch", "attributes": {"gen_ai.usage.input_tokens": 280, "gen_ai.usage.output_tokens": 88, "estimated_cost_usd": 0.0038}}
+  ]
+}

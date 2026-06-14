@@ -1,0 +1,13 @@
+{
+  "run_id": "candidate-c06",
+  "case_id": "c06-retry-drift",
+  "expected_output": "refund policy mismatch",
+  "final_output": "The user issue is a refund policy mismatch. Route to billing ops.",
+  "metadata": {"scenario": "regression: search_docs errored, then silently retried with a CHANGED query. retry_drift is MEDIUM, so plimsoll reports it and still EXITS 0."},
+  "spans": [
+    {"span_id": "s1", "name": "read ticket", "kind": "tool", "status": "ok", "start_ms": 0, "end_ms": 120, "tool_name": "read_ticket", "input": {"ticket_id": "T-1042"}, "output": {"subject": "Refund policy mismatch"}, "attributes": {}},
+    {"span_id": "s2", "name": "search docs", "kind": "tool", "status": "error", "start_ms": 130, "end_ms": 650, "tool_name": "search_docs", "input": {"query": "refund policy eligibility"}, "output": null, "error": "timeout", "attributes": {}},
+    {"span_id": "s3", "name": "search docs retry", "kind": "tool", "status": "ok", "start_ms": 660, "end_ms": 980, "tool_name": "search_docs", "input": {"query": "refund eligibility window"}, "output": {"doc": "billing_refunds.md"}, "attributes": {}},
+    {"span_id": "s4", "name": "summarize", "kind": "model", "status": "ok", "start_ms": 990, "end_ms": 1450, "tool_name": "summarize", "input": {"ticket": "T-1042", "doc": "billing_refunds.md"}, "output": "refund policy mismatch", "attributes": {"gen_ai.usage.input_tokens": 290, "gen_ai.usage.output_tokens": 92, "estimated_cost_usd": 0.004}}
+  ]
+}

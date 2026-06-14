@@ -5,6 +5,23 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- A runnable 12-case head-to-head benchmark against promptfoo on deterministic
+  trace-regression detection (`examples/benchmark/` + `docs/BENCHMARK_vs_promptfoo.md`).
+  Every Plimsoll case is run for real; the scorecard is honest about ties, the one
+  budget-gating case promptfoo wins, and the full-trace-scan / ordering / packaging
+  cases Plimsoll wins.
+- `docs/RELATED_WORK.md` — where Plimsoll sits against promptfoo, agentevals, DeepEval,
+  Ragas, Inspect AI, and the AgentAssay paper, and what is genuinely differentiated.
+
+### Changed
+
+- `pyproject.toml` declares an explicit `dependencies = []` so the zero-runtime-dependency
+  contract is literal in the metadata.
+
 ## [0.9.0] - 2026-05-31
 
 ### Changed
