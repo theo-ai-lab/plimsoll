@@ -28,7 +28,7 @@ jobs:
       pages: write     # deploy to Pages
       id-token: write  # verify the deployment origin
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Assemble the site
         run: |
@@ -40,10 +40,10 @@ jobs:
           cp -r examples/output/golden _site/golden
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: _site
 
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
