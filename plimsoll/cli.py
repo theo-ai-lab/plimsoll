@@ -12,6 +12,7 @@ from plimsoll.diff import trajectory_diff
 from plimsoll.io import load_policy, load_traces, write_json
 from plimsoll.models import TraceRun, ValidationError
 from plimsoll.otel import load_otel_traces
+from plimsoll.passk import aggregate_pass_k
 from plimsoll.policy import infer_policy
 from plimsoll.report import (
     build_case_report,
@@ -88,6 +89,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="always exit 0 even when findings exist (report-only mode; the report still records every finding)",
     )
     run.add_argument(
+        "--passk",
+        type=int,
+        default=None,
+        metavar="K",
+        help="aggregate pass^1..pass^K reliability over repeated runs of the same case_id "
+        "(tau-Bench: pass^K = fraction of tasks whose every recorded run passed). "
+        "Defaults to the minimum runs-per-task. Report-only unless --passk-threshold is set.",
+    )
+    run.add_argument(
+        "--passk-threshold",
+        type=float,
+        default=None,
+        metavar="FLOAT",
+        help="reliability floor in [0,1]: fail the run when pass^K falls below it. "
+        "Enables pass^k aggregation even without --passk.",
+    )
+    run.add_argument(
         "--json", dest="as_json", action="store_true", help="print a machine-readable JSON summary to stdout"
     )
     run.add_argument("-q", "--quiet", action="store_true", help="suppress the human-readable summary line")
@@ -116,26 +134,35 @@ def run_command(args: argparse.Namespace) -> int:
         baseline = baseline_by_case.get(trace.case_id)
         findings = evaluate_trace(trace, policy, baseline)
         reports.append(build_case_report(trace, findings, trajectory_diff(trace, baseline, policy)))
-    payload = report_to_dict(reports)
+    # pass^k reliability is opt-in: it activates when either flag is given. It aggregates
+    # the per-run verdicts just built (grouped by case_id) — no trace is re-evaluated.
+    passk = None
+    if args.passk is not None or args.passk_threshold is not None:
+        passk = aggregate_pass_k(reports, k=args.passk, threshold=args.passk_threshold)
+    payload = report_to_dict(reports, passk=passk)
     write_json(args.out / "report.json", payload)
-    write_html_report(args.out / "report.html", reports)
+    write_html_report(args.out / "report.html", reports, passk=passk)
     if args.junit is not None:
-        write_junit_report(_output_path(args.junit, args.out / "report.junit.xml"), reports)
+        write_junit_report(_output_path(args.junit, args.out / "report.junit.xml"), reports, passk=passk)
     if args.sarif is not None:
         write_sarif_report(
             _output_path(args.sarif, args.out / "report.sarif.json"),
             reports,
             policy_path=args.policy,
             input_path=args.input,
+            passk=passk,
         )
     if args.md is not None:
-        write_markdown_report(_output_path(args.md, args.out / "report.md"), reports)
-    _maybe_write_step_summary(reports)
+        write_markdown_report(_output_path(args.md, args.out / "report.md"), reports, passk=passk)
+    _maybe_write_step_summary(reports, passk)
     summary = summarize(reports)
-    _emit_summary(args, summary)
+    _emit_summary(args, summary, passk)
     if args.exit_zero:
         return EXIT_OK
-    return EXIT_FINDINGS if summary["failed"] else EXIT_OK
+    # The pass^k gate (when armed) fails CI on its own, independent of per-run findings.
+    if summary["failed"] or (passk is not None and passk.gate_failed):
+        return EXIT_FINDINGS
+    return EXIT_OK
 
 
 def init_policy_command(args: argparse.Namespace) -> int:
@@ -157,12 +184,12 @@ def load_input_traces(path: Path, trace_format: str) -> list[TraceRun]:
     return load_traces(path)
 
 
-def _maybe_write_step_summary(reports: list) -> None:
+def _maybe_write_step_summary(reports: list, passk=None) -> None:
     """Inside GitHub Actions, append a Markdown summary to the job's run summary (zero config)."""
     path = os.environ.get("GITHUB_STEP_SUMMARY")
     if not path:
         return
-    markdown = render_markdown(reports)
+    markdown = render_markdown(reports, passk)
     if len(markdown.encode("utf-8")) > 1_000_000:
         markdown = markdown[:200_000] + "\n\n_…truncated; see the full report artifact._\n"
     try:
@@ -172,11 +199,14 @@ def _maybe_write_step_summary(reports: list) -> None:
         pass
 
 
-def _emit_summary(args: argparse.Namespace, summary: dict[str, object]) -> None:
+def _emit_summary(args: argparse.Namespace, summary: dict[str, object], passk=None) -> None:
     # Machine-readable output goes to stdout so it pipes cleanly; the human banner is
     # diagnostic and goes to stderr (clig.dev). Report files are written under --out.
     if getattr(args, "as_json", False):
-        print(json.dumps({"summary": summary}, indent=2, sort_keys=True))
+        machine: dict[str, object] = {"summary": summary}
+        if passk is not None:
+            machine["reliability"] = passk.to_dict()
+        print(json.dumps(machine, indent=2, sort_keys=True))
         return
     if args.quiet:
         return
@@ -188,6 +218,12 @@ def _emit_summary(args: argparse.Namespace, summary: dict[str, object]) -> None:
         color = "\033[32m" if not summary["failed"] else "\033[31m"
         line = f"{color}{line}\033[0m"
     print(line, file=sys.stderr)
+    if passk is not None:
+        passk_line = f"Plimsoll reliability: {passk.headline}"
+        if _use_color(args):
+            color = "\033[31m" if passk.gate_failed else "\033[32m"
+            passk_line = f"{color}{passk_line}\033[0m"
+        print(passk_line, file=sys.stderr)
 
 
 def _use_color(args: argparse.Namespace) -> bool:

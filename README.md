@@ -102,6 +102,19 @@ Some failures are about *order*, not drift. `must_precede` declares pairs where 
 
 This catches the canonical agent-safety failure (performing a privileged action before its required approvals) as a **critical** finding. The rule constrains ordering only: an agent that refuses and escalates (never performing `after`) passes, so the gate never forces the high-risk action to occur. See the worked scenario below.
 
+## Reliability: `pass^k` over repeated runs
+
+Stochastic agents are flaky — a task that passes once may fail on the next run. `pass^k` is the **tau-Bench reliability view**: record the *same* task `k` times and ask how often the agent gets it right *every* time, not just once. It is the fraction of tasks for which **all `k` recorded runs pass** (per-task estimator `C(c, k) / C(n, k)`; `pass^1 = pass@1` is the ordinary per-run rate, `pass^n` asks "did every recorded run pass?"). It is computed **deterministically and offline** — Plimsoll only counts the per-run verdicts it already produces (a run passes when it has no critical/high finding), grouped by `case_id`. No re-evaluation, no LLM, no tokens.
+
+It is report-only by default and becomes a **CI gate** the moment you set `--passk-threshold`:
+
+```bash
+plimsoll run --input runs/ --policy policy.json --out out --passk-threshold 0.9
+# Plimsoll reliability: pass@1=1.000 pass^1=1.000 over 1 task(s) x up to 1 run(s) [gate >= 0.900: PASS]
+```
+
+Point `--input` at multiple recorded runs of the same task (a directory or `.jsonl`, grouped by `case_id`) to get `k > 1`; below the threshold the gate fails the build (exit `1`). The `reliability` block (the full `pass^j` curve, per-task results, and gate verdict) is written into `report.json` and carried through the HTML/JUnit/SARIF/Markdown outputs.
+
 ## Why use Plimsoll
 
 - **Deterministic and reproducible.** No LLM-as-judge, so there is no flakiness or per-run token cost, and results are identical for every reviewer. Checks you can express as code are the cheapest and most reliable layer — run them first, and reserve judgment-based evaluation for what genuinely needs semantic judgment.
@@ -189,7 +202,7 @@ Regenerate it with `python scripts/build_access_request_demo.py`. Read [`BEFORE_
 
 ```bash
 python -m pip install -e '.[dev]'      # adds ruff (the only dev dependency)
-python -m unittest discover -s tests   # 67 tests
+python -m unittest discover -s tests   # 138 tests
 ruff check .
 python scripts/validate_public_fixtures.py
 ```
@@ -209,7 +222,6 @@ Plimsoll does not start a server, call an LLM, send telemetry, upload traces, or
 ## Roadmap
 
 - Outcome/state assertions and per-tool argument matching, alongside the sequence modes.
-- `pass@k` / `pass^k` aggregation over repeated recorded runs for stochastic agents.
 
 See [`CHANGELOG.md`](CHANGELOG.md) for release history and [`CONTRIBUTING.md`](CONTRIBUTING.md) to get involved.
 

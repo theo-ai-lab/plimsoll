@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Runtime governor** (`plimsoll/governor.py`): the same deterministic rule engine run as a
+  *pre-execution* gate. `Governor.evaluate(partial_trace, proposed_call)` decides whether a
+  proposed next tool call is safe given the trace so far, enforcing only the subset of rules
+  decidable before a call runs (allowlist/forbidden membership, `must_precede` ordering,
+  cumulative budgets, repeated-action limits). Rules that need the call's result, the whole
+  trajectory, or the finished run remain deferred to the post-hoc `check_trace` audit. No LLM,
+  no network, no third-party import — the same zero-dependency engine, evaluated at the gate.
+- Optional MCP-style tool surface for the governor (`plimsoll/governor_mcp.py`): the gate
+  (`propose_tool_call`) and the full audit (`check_trace`) as plain JSON-in/JSON-out
+  callables, with optional `mcp`-SDK server wiring. The `mcp` SDK is an optional extra; the
+  core engine never imports it.
+- `examples/governor_loop_demo.py`: the governor firing as a live pre-execution gate over a
+  scripted agent loop, cross-checking every decision against a ground-truth label so the
+  "blocked N of M unsafe calls" headline is verified, not asserted.
+- `pass^k` reliability aggregation over repeated recorded runs of the same `case_id`
+  (`plimsoll/passk.py`): the tau-Bench reliability view (`pass^k` = fraction of tasks whose
+  every recorded run passed), computed deterministically and offline from the per-run verdicts
+  Plimsoll already produces. Report-only by default; `--passk-threshold` arms it as a CI gate
+  (`--passk` selects K). The `reliability` block threads through the JSON/HTML/JUnit/SARIF/Markdown
+  reports.
 - A runnable 12-case head-to-head benchmark against promptfoo on deterministic
   trace-regression detection (`examples/benchmark/` + `docs/BENCHMARK_vs_promptfoo.md`).
   Every Plimsoll case is run for real; the scorecard is honest about ties, the one
