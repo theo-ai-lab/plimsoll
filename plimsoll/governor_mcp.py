@@ -24,6 +24,8 @@ This preserves Plimsoll's zero-dependency identity: the core engine never import
 
 from __future__ import annotations
 
+import argparse
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -126,3 +128,45 @@ def build_server(governor: Governor, name: str = "plimsoll-governor") -> Any:
         return tools.check_trace(trace, baseline)
 
     return server
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Console entry point (``plimsoll-governor``): serve the governor over MCP on stdio.
+
+    Loads a policy, builds the :func:`build_server` ``FastMCP`` server, and runs it so an MCP
+    host can call ``propose_tool_call`` (the gate) and ``check_trace`` (the audit). The ``mcp``
+    SDK is an OPTIONAL extra: when it is absent this prints an honest install hint and exits 2
+    — no silent fallback — so the zero-dependency core install is never affected. The SDK-free
+    callable surface (:func:`make_handlers` / :class:`GovernorTools`) needs no extra at all.
+    """
+    parser = argparse.ArgumentParser(
+        prog="plimsoll-governor",
+        description="Serve the deterministic Plimsoll governor over MCP (stdio transport). "
+        "No LLM, no outbound network — the same offline rule engine, exposed as MCP tools.",
+    )
+    parser.add_argument(
+        "--policy", type=Path, default=None, help="policy JSON file (default: a permissive empty policy)"
+    )
+    parser.add_argument(
+        "--name",
+        default="plimsoll-governor",
+        help="server name advertised to the MCP host (default: plimsoll-governor)",
+    )
+    args = parser.parse_args(argv)
+
+    if not _HAS_MCP:
+        print(
+            "error: the 'mcp' SDK is not installed. Install the optional extra with "
+            '`pip install "plimsoll[mcp]"` (or `pip install mcp`) to serve the governor over MCP. '
+            "The SDK-free callable surface (make_handlers / GovernorTools) works without it.",
+            file=sys.stderr,
+        )
+        return 2
+
+    server = build_server(Governor(load_policy(args.policy)), name=args.name)
+    server.run()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

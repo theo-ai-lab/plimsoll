@@ -16,10 +16,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cumulative budgets, repeated-action limits). Rules that need the call's result, the whole
   trajectory, or the finished run remain deferred to the post-hoc `check_trace` audit. No LLM,
   no network, no third-party import — the same zero-dependency engine, evaluated at the gate.
+- **`plimsoll governor` CLI subcommand**: a one-shot, deterministic gate over a single proposed
+  tool call. Reads the call as JSON (a tool-name string or an object with a `tool` field) from
+  `--call PATH` or stdin, takes the calls that already ran via `--partial-trace`, evaluates it
+  against `--policy`, and prints the allow/block decision with the rule that fired. Exits `0` to
+  allow, `1` to block, `2` on a usage error; `--json` emits the machine-readable `Decision`.
 - Optional MCP-style tool surface for the governor (`plimsoll/governor_mcp.py`): the gate
   (`propose_tool_call`) and the full audit (`check_trace`) as plain JSON-in/JSON-out
   callables, with optional `mcp`-SDK server wiring. The `mcp` SDK is an optional extra; the
   core engine never imports it.
+- **`plimsoll-governor` console script**: launches the governor as an MCP server (stdio) so an
+  MCP host can call `propose_tool_call`/`check_trace`. Requires the new optional `mcp` extra
+  (`pip install "plimsoll[mcp]"`); the import stays lazy, so the zero-dependency core install is
+  unaffected and the launcher exits with a clear install hint (no silent fallback) when the SDK
+  is absent.
+- **Armed `pass^k` CI gate** with committed multi-run fixtures (`examples/reliability/`): a
+  stable directory (three runs of one `case_id`, all pass → `pass^3 = 1.0`) and a flaky one
+  (one run bypasses the required approval → `pass^3 = 0.0`). The repo's own CI runs both as a
+  self-test — asserting the stable fixture passes the gate (exit `0`) and the flaky one fails it
+  (exit `1`) — and `examples/ci/github-actions.yml` documents the `--passk-threshold` step.
 - `examples/governor_loop_demo.py`: the governor firing as a live pre-execution gate over a
   scripted agent loop, cross-checking every decision against a ground-truth label so the
   "blocked N of M unsafe calls" headline is verified, not asserted.

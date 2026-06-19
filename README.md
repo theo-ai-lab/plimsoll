@@ -102,6 +102,48 @@ Some failures are about *order*, not drift. `must_precede` declares pairs where 
 
 This catches the canonical agent-safety failure (performing a privileged action before its required approvals) as a **critical** finding. The rule constrains ordering only: an agent that refuses and escalates (never performing `after`) passes, so the gate never forces the high-risk action to occur. See the worked scenario below.
 
+## Runtime governor: gate a tool call before it runs
+
+The same deterministic engine also runs as a **pre-execution gate**. Instead of auditing a
+finished trace, the governor answers a live question — *given everything that has run so far,
+is it safe to make this next tool call?* — and blocks it before it executes. It enforces only
+the rules decidable before a call runs (allowlist/forbidden membership, `must_precede`
+ordering, cumulative budgets, repeated-action limits); rules that need the call's result or the
+finished trajectory stay deferred to the post-hoc `run` audit. Still no LLM, no network, no
+third-party import.
+
+`plimsoll governor` is the one-shot CLI gate. It reads a proposed tool call as JSON (a
+tool-name string, or an object with a `tool` field plus optional `input`/token/cost hints) from
+`--call` or stdin, takes the calls that already ran via `--partial-trace`, and exits non-zero
+when a rule blocks it:
+
+```bash
+# Forbidden tool: blocked outright (exit 1).
+echo '{"tool": "delete_database"}' | plimsoll governor --policy policy.json
+# Plimsoll governor: block 'delete_database'
+#   - forbidden_tool [critical]: Trace used forbidden tools.
+
+# Ordering: grant_access proposed after only a search has run, with no manager_review yet.
+echo '["search"]' > prior.json
+echo '{"tool": "grant_access"}' | plimsoll governor --policy policy.json --partial-trace prior.json
+# Plimsoll governor: block 'grant_access'
+#   - tool_order [critical]: 'grant_access' occurred before the required 'manager_review'.
+```
+
+For a long-running integration, `plimsoll-governor` serves the same gate over MCP (stdio) as
+two tools — `propose_tool_call` (the gate) and `check_trace` (the full audit) — so an MCP host
+or agent loop can consult it on every proposed tool call:
+
+```bash
+pip install "plimsoll[mcp]"   # the mcp SDK is an optional extra; the core stays zero-dependency
+plimsoll-governor --policy policy.json
+```
+
+If you would rather not depend on the MCP SDK at all, `plimsoll.governor_mcp.make_handlers`
+exposes the same two tools as plain `{name: callable}` JSON-in/JSON-out functions.
+[`examples/governor_loop_demo.py`](examples/governor_loop_demo.py) wires the gate into a
+scripted agent loop and verifies every decision against a ground-truth label.
+
 ## Reliability: `pass^k` over repeated runs
 
 Stochastic agents are flaky — a task that passes once may fail on the next run. `pass^k` is the **tau-Bench reliability view**: record the *same* task `k` times and ask how often the agent gets it right *every* time, not just once. It is the fraction of tasks for which **all `k` recorded runs pass** (per-task estimator `C(c, k) / C(n, k)`; `pass^1 = pass@1` is the ordinary per-run rate, `pass^n` asks "did every recorded run pass?"). It is computed **deterministically and offline** — Plimsoll only counts the per-run verdicts it already produces (a run passes when it has no critical/high finding), grouped by `case_id`. No re-evaluation, no LLM, no tokens.
@@ -114,6 +156,8 @@ plimsoll run --input runs/ --policy policy.json --out out --passk-threshold 0.9
 ```
 
 Point `--input` at multiple recorded runs of the same task (a directory or `.jsonl`, grouped by `case_id`) to get `k > 1`; below the threshold the gate fails the build (exit `1`). The `reliability` block (the full `pass^j` curve, per-task results, and gate verdict) is written into `report.json` and carried through the HTML/JUnit/SARIF/Markdown outputs.
+
+A committed, runnable example lives in [`examples/reliability/`](examples/reliability/) — a **stable** fixture (three runs of one task, all pass → `pass^3 = 1.0`, gate passes) and a **flaky** one (a run bypasses a required approval → `pass^3 = 0.0`, gate fails). The project's own CI runs both as a self-test, and [`examples/ci/github-actions.yml`](examples/ci/github-actions.yml) documents the `--passk-threshold` step.
 
 ## Why use Plimsoll
 
@@ -202,7 +246,7 @@ Regenerate it with `python scripts/build_access_request_demo.py`. Read [`BEFORE_
 
 ```bash
 python -m pip install -e '.[dev]'      # adds ruff (the only dev dependency)
-python -m unittest discover -s tests   # 138 tests
+python -m unittest discover -s tests   # 154 tests
 ruff check .
 python scripts/validate_public_fixtures.py
 ```

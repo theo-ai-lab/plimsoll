@@ -1,0 +1,6 @@
+{
+  "allowed_tools": ["validate_cart", "authorize_payment", "capture_payment", "send_receipt"],
+  "must_precede": [
+    {"before": "authorize_payment", "after": "capture_payment"}
+  ]
+}

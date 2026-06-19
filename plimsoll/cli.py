@@ -9,7 +9,8 @@ from pathlib import Path
 from plimsoll import __version__
 from plimsoll.adapters import load_adapter_traces
 from plimsoll.diff import trajectory_diff
-from plimsoll.io import load_policy, load_traces, write_json
+from plimsoll.governor import Decision, Governor, coerce_partial_trace
+from plimsoll.io import load_json, load_policy, load_traces, write_json
 from plimsoll.models import TraceRun, ValidationError
 from plimsoll.otel import load_otel_traces
 from plimsoll.passk import aggregate_pass_k
@@ -43,6 +44,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_command(args)
         if args.command == "init-policy":
             return init_policy_command(args)
+        if args.command == "governor":
+            return governor_command(args)
         parser.print_help()
         return EXIT_ERROR
     except ValidationError as exc:
@@ -121,6 +124,41 @@ def build_parser() -> argparse.ArgumentParser:
     init.add_argument("--input", required=True, type=Path, help="trace JSON file or directory")
     init.add_argument("--format", choices=supported_formats(), default="native", help="input trace format")
     init.add_argument("--out", required=True, type=Path, help="policy output JSON path")
+
+    governor = sub.add_parser(
+        "governor",
+        help="gate one proposed tool call against a policy BEFORE it runs (deterministic, offline)",
+        description="Pre-execution gate: decide whether a single proposed tool call may run, given the "
+        "calls that already ran. Reuses the same deterministic rule engine as 'run', evaluated at the "
+        "gate. Exits 0 to allow, 1 to block, 2 on a usage/input error. No LLM, no network.",
+    )
+    governor.add_argument("--policy", type=Path, help="policy JSON file (default: a permissive empty policy)")
+    governor.add_argument(
+        "--call",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="proposed tool call as JSON: a tool-name string or an object with a 'tool' field "
+        "(plus optional input/token/cost hints). Omit, or pass '-', to read it from stdin.",
+    )
+    governor.add_argument(
+        "--partial-trace",
+        dest="partial_trace",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="JSON of the calls that already ran: a list of calls or a trace object. "
+        "Defaults to the empty start state (nothing has run yet).",
+    )
+    governor.add_argument("--json", dest="as_json", action="store_true", help="print the decision as JSON to stdout")
+    governor.add_argument("-q", "--quiet", action="store_true", help="suppress the human-readable decision line")
+    governor.add_argument(
+        "--color",
+        choices=["auto", "always", "never"],
+        default="auto",
+        help="control ANSI color in the decision line (default: auto; honors NO_COLOR/FORCE_COLOR)",
+    )
+    governor.add_argument("--no-color", action="store_true", help="alias for --color never")
     return parser
 
 
@@ -170,6 +208,53 @@ def init_policy_command(args: argparse.Namespace) -> int:
     write_json(args.out, infer_policy(traces))
     print(f"Plimsoll: wrote inferred policy to {args.out}", file=sys.stderr)
     return EXIT_OK
+
+
+def governor_command(args: argparse.Namespace) -> int:
+    """Gate one proposed tool call against a policy before it executes.
+
+    Deterministic and offline: loads the policy, reconstructs the partial trace, and runs the
+    governor's decidable rule subset over the proposed call. Returns 0 (allow) or 1 (block).
+    """
+    policy = load_policy(args.policy)
+    proposed_call = _read_json_input(args.call, "proposed tool call")
+    partial_payload = load_json(args.partial_trace) if args.partial_trace is not None else None
+    partial = coerce_partial_trace(partial_payload)
+    decision = Governor(policy).evaluate(partial, proposed_call)
+    _emit_decision(args, decision)
+    return EXIT_OK if decision.allowed else EXIT_FINDINGS
+
+
+def _read_json_input(path: Path | None, label: str) -> object:
+    """Read a JSON document from ``path``, or from stdin when ``path`` is None or '-'."""
+    if path is None or str(path) == "-":
+        raw = sys.stdin.read()
+        if not raw.strip():
+            raise ValidationError(f"no {label} provided: pass JSON on stdin or via --call PATH")
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ValidationError(f"<stdin>: invalid JSON for {label} at line {exc.lineno}: {exc.msg}") from exc
+    return load_json(path)
+
+
+def _emit_decision(args: argparse.Namespace, decision: Decision) -> None:
+    # Machine-readable JSON goes to stdout (pipes cleanly); the human line goes to stderr.
+    if getattr(args, "as_json", False):
+        print(json.dumps(decision.to_dict(), indent=2, sort_keys=True))
+        return
+    if args.quiet:
+        return
+    verb = "allow" if decision.allowed else "block"
+    head = f"Plimsoll governor: {verb} '{decision.proposed_tool}'"
+    if decision.allowed:
+        head += " (no governor rule blocked it)"
+    if _use_color(args):
+        color = "\033[32m" if decision.allowed else "\033[31m"
+        head = f"{color}{head}\033[0m"
+    print(head, file=sys.stderr)
+    for finding in decision.blocking_findings:
+        print(f"  - {finding.rule_id} [{finding.severity}]: {finding.message}", file=sys.stderr)
 
 
 def load_baselines(path: Path, trace_format: str) -> dict[str, TraceRun]:

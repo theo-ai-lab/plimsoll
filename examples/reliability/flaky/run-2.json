@@ -1,0 +1,52 @@
+{
+  "run_id": "checkout-flaky-2",
+  "case_id": "checkout",
+  "final_output": "Order ORD-4012 authorized, captured, and receipt emailed.",
+  "expected_output": "captured",
+  "spans": [
+    {
+      "span_id": "s0",
+      "name": "validate_cart",
+      "kind": "tool",
+      "status": "ok",
+      "start_ms": 0,
+      "end_ms": 39,
+      "tool_name": "validate_cart",
+      "input": {"cart_id": "ORD-4012"},
+      "attributes": {"gen_ai.usage.input_tokens": 119, "gen_ai.usage.output_tokens": 30}
+    },
+    {
+      "span_id": "s1",
+      "name": "authorize_payment",
+      "kind": "tool",
+      "status": "ok",
+      "start_ms": 39,
+      "end_ms": 148,
+      "tool_name": "authorize_payment",
+      "input": {"cart_id": "ORD-4012", "amount_usd": 64.0},
+      "attributes": {"gen_ai.usage.input_tokens": 91, "gen_ai.usage.output_tokens": 20}
+    },
+    {
+      "span_id": "s2",
+      "name": "capture_payment",
+      "kind": "tool",
+      "status": "ok",
+      "start_ms": 148,
+      "end_ms": 228,
+      "tool_name": "capture_payment",
+      "input": {"cart_id": "ORD-4012", "amount_usd": 64.0},
+      "attributes": {"gen_ai.usage.input_tokens": 70, "gen_ai.usage.output_tokens": 15}
+    },
+    {
+      "span_id": "s3",
+      "name": "send_receipt",
+      "kind": "tool",
+      "status": "ok",
+      "start_ms": 228,
+      "end_ms": 279,
+      "tool_name": "send_receipt",
+      "input": {"cart_id": "ORD-4012"},
+      "attributes": {"gen_ai.usage.input_tokens": 59, "gen_ai.usage.output_tokens": 25}
+    }
+  ]
+}
