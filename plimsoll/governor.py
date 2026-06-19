@@ -134,6 +134,65 @@ class Decision:
         }
 
 
+@dataclass(frozen=True)
+class PlanFeasibility:
+    """Stage-1 deterministic feasibility + score for a WHOLE proposed plan (a candidate trajectory).
+
+    This is the *free, exact pruner* of the deterministic-first MPC contract: Plimsoll's
+    whole-plan policy DRY-RUN. Every step of the plan is gated against the steps before it,
+    WITHOUT executing a single tool or spending a token. Within the gate's decidable rule
+    subset it is *exact* (no false negatives: a plan it calls feasible provably violates none
+    of those rules), so a planner can prune infeasible candidate trajectories before paying an
+    expensive model to score them.
+
+    The result-dependent rules (output match, leakage, retry/trajectory drift) are NOT
+    decidable on an un-executed plan and stay deferred to the post-hoc audit — exactly the
+    governor/audit cascade boundary.
+    """
+
+    plan_length: int
+    decisions: list[Decision] = field(default_factory=list)
+    blocking_step: int | None = None
+
+    @property
+    def feasible(self) -> bool:
+        return self.blocking_step is None
+
+    @property
+    def blocking_findings(self) -> list[Finding]:
+        if self.blocking_step is None:
+            return []
+        return self.decisions[self.blocking_step].blocking_findings
+
+    @property
+    def score(self) -> int:
+        """A deterministic 0-100 pruning signal: 100 if the whole plan clears the gate, else
+        how far it got before the first block. A cheap ordering heuristic for MPC pruning —
+        deliberately NOT a calibrated success probability."""
+        if self.plan_length == 0 or self.feasible:
+            return 100
+        assert self.blocking_step is not None
+        return round(100 * self.blocking_step / self.plan_length)
+
+    @property
+    def summary(self) -> str:
+        if self.feasible:
+            return f"feasible: all {self.plan_length} planned step(s) clear the gate (score {self.score})"
+        tool = self.decisions[self.blocking_step].proposed_tool
+        rules = ", ".join(self.decisions[self.blocking_step].rule_ids)
+        return f"infeasible: step {self.blocking_step} ('{tool}') blocked by {rules} (score {self.score})"
+
+    def to_dict(self) -> JsonObject:
+        return {
+            "feasible": self.feasible,
+            "score": self.score,
+            "plan_length": self.plan_length,
+            "blocking_step": self.blocking_step,
+            "summary": self.summary,
+            "steps": [{"step": index, **decision.to_dict()} for index, decision in enumerate(self.decisions)],
+        }
+
+
 class Governor:
     """Evaluate a partial trace + a proposed next tool call against a :class:`Policy`."""
 
@@ -214,6 +273,25 @@ class Governor:
         """Full post-hoc audit of a completed trace (delegates to ``rules.evaluate_trace``)."""
         return evaluate_trace(trace, self.policy, baseline)
 
+    def dry_run_plan(self, plan: list[Any]) -> PlanFeasibility:
+        """Dry-run a WHOLE proposed plan against the policy without executing anything.
+
+        ``plan`` is an ordered list of proposed calls (``ProposedToolCall``, tool-name str,
+        or JSON object). Each step is gated against the steps before it; the result reports
+        every per-step decision, the first blocking step (if any), and a deterministic
+        feasibility score. This is the stage-1 feasibility / scoreTrace seam — the exact,
+        token-free pruner for a deterministic-first MPC planner.
+        """
+        calls = [ProposedToolCall.from_obj(item) for item in plan]
+        decisions: list[Decision] = []
+        blocking_step: int | None = None
+        for index, call in enumerate(calls):
+            decision = self.evaluate(calls[:index], call)
+            decisions.append(decision)
+            if blocking_step is None and not decision.allowed:
+                blocking_step = index
+        return PlanFeasibility(plan_length=len(calls), decisions=decisions, blocking_step=blocking_step)
+
     @staticmethod
     def build_partial_trace(
         prior_calls: list[Any],
@@ -281,6 +359,45 @@ def coerce_partial_trace(payload: Any) -> TraceRun:
             metadata=payload.get("metadata") or {},
         )
     raise ValidationError(f"cannot read a partial trace from {type(payload).__name__}")
+
+
+def replay_through_gate(trace: TraceRun, policy: Policy) -> list[Decision]:
+    """Replay a *completed* trace's tool calls through the pre-execution gate, in order.
+
+    For each tool span, the gate is asked whether that call would have been allowed given the
+    spans before it. This is how the cheap (gate) tier is measured against the expensive
+    (full-audit) tier for the cascade telemetry — purely deterministic, zero model spend. Only
+    tool spans are gated; non-tool spans still count toward cumulative budgets via the prefix.
+    """
+    governor = Governor(policy)
+    spans_sorted = sorted(trace.spans, key=lambda span: (span.start_ms, span.end_ms, span.span_id))
+    decisions: list[Decision] = []
+    for index, span in enumerate(spans_sorted):
+        if not span.tool_name:
+            continue
+        prefix = TraceRun(
+            run_id=trace.run_id,
+            case_id=trace.case_id,
+            final_output="",
+            expected_output=None,
+            spans=spans_sorted[:index],
+        )
+        decisions.append(governor.evaluate(prefix, _proposed_from_span(span)))
+    return decisions
+
+
+def _proposed_from_span(span: Span) -> ProposedToolCall:
+    """Build a :class:`ProposedToolCall` from a recorded tool span (for gate replay)."""
+    attributes = span.attributes or {}
+    return ProposedToolCall(
+        tool=span.tool_name or span.name,
+        input=span.input,
+        input_tokens=int(attributes.get("gen_ai.usage.input_tokens", 0) or 0),
+        output_tokens=int(attributes.get("gen_ai.usage.output_tokens", 0) or 0),
+        estimated_cost_usd=float(attributes.get("estimated_cost_usd", 0.0) or 0.0),
+        duration_ms=span.duration_ms,
+        status=span.status,
+    )
 
 
 def _span_from_call(call: ProposedToolCall, *, span_id: str, start_ms: int) -> Span:

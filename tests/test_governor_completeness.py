@@ -32,7 +32,7 @@ import unittest
 
 from plimsoll.governor import Governor, ProposedToolCall
 from plimsoll.models import Policy, Span, TraceRun, stable_repr
-from plimsoll.passk import PASSK_RULE_ID
+from plimsoll.passk import PASSK_RULE_ID, PASSK_SLA_RULE_ID
 from plimsoll.report import RULE_DESCRIPTIONS
 
 # The gate's decidable subset and the rules deliberately deferred to check_trace. These are
@@ -286,9 +286,10 @@ class DeferredRulesAreEnforcedNotDroppedTests(unittest.TestCase):
 
 class RuleClassificationPartitionTests(unittest.TestCase):
     def test_every_engine_rule_is_classified_gate_or_deferred(self) -> None:
-        # The canonical rule catalog, minus the pass^k aggregate gate (a cross-run metric,
-        # not a per-trace rule the engine emits).
-        catalog = set(RULE_DESCRIPTIONS) - {PASSK_RULE_ID}
+        # The canonical rule catalog, minus the cross-run reliability gates (pass^k point and
+        # the SLA confidence band) — those are aggregate metrics over repeated runs, not
+        # per-trace rules the engine emits, so the gate/deferred partition does not apply.
+        catalog = set(RULE_DESCRIPTIONS) - {PASSK_RULE_ID, PASSK_SLA_RULE_ID}
         self.assertEqual(
             GATE_RULES | DEFERRED_RULES,
             catalog,

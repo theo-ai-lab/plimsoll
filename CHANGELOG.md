@@ -44,6 +44,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Plimsoll already produces. Report-only by default; `--passk-threshold` arms it as a CI gate
   (`--passk` selects K). The `reliability` block threads through the JSON/HTML/JUnit/SARIF/Markdown
   reports.
+- **Reliability decay curve with a calibrated confidence band** (`plimsoll/stats.py`,
+  `plimsoll/passk.py`): the fixed-`k` `pass^k` point is upgraded to a curve. The pooled per-run
+  success probability `p` is estimated with a **Wilson score interval** (calibrated, not a magic
+  constant — Acklam's inverse-normal quantile makes any confidence level exact, and Wilson keeps
+  near-nominal coverage at the small `n`/extreme `p` where Wald collapses), and `pass^k = p^k` is
+  projected as a band `[p_low^k, p_high^k]` (an exact CI via the monotone transform). Surfaces the
+  Reliability Decay Curve, `k*` (largest `k` clearing the SLA), the **Meltdown Onset Point**, the
+  per-run reliability as the governing invariant (no positive asymptote for `p < 1`; sample-`k`
+  decay over a *fixed* gold set, never extrapolated over gold-set size), and optional
+  rank-balanced per-task-duration buckets when trace data carries durations.
+- **`--reliability-sla` honest worst-case gate**: a CI gate on the *lower* edge of the Wilson
+  `pass^k` band (rule `reliability_sla`, distinct from the model-free `reliability_pass_k` floor),
+  so a lucky small-`n` run with a wide band cannot certify the SLA. `--reliability-confidence` sets
+  the band width (default `0.95`). Both gates fail the build independently and emit their own
+  JUnit testcase and SARIF result.
+- **Cheap → expensive cascade telemetry** (`plimsoll/cascade.py`, `--cascade`): measures
+  Plimsoll's one real deterministic boundary — the pre-execution gate vs. the full post-hoc audit
+  — by replay, at zero model spend, emitting the suite-wide contract shape `{alpha,
+  disagreementRate, losslessViolations}` per boundary plus a regime/residual-locus label for every
+  gate (model-free/provable vs. model-based residual). The gate's rule subset is provably contained
+  in the audit's, so `losslessViolations` is 0 and disagreement is always in the safe direction.
+- **Whole-plan policy dry-run** (`Governor.dry_run_plan`, `plimsoll governor --plan`): the stage-1
+  feasibility / scoreTrace seam — gates an entire proposed plan against the policy without
+  executing a tool or spending a token, returning a per-step verdict, the first blocking step, and
+  a deterministic feasibility score (exit `0` feasible / `1` infeasible). Exact within the gate's
+  decidable rule subset, so a deterministic-first planner can prune infeasible trajectories before
+  paying an expensive model to score them.
 - A runnable 12-case head-to-head benchmark against promptfoo on deterministic
   trace-regression detection (`examples/benchmark/` + `docs/BENCHMARK_vs_promptfoo.md`).
   Every Plimsoll case is run for real; the scorecard is honest about ties, the one

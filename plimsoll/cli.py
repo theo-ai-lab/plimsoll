@@ -8,8 +8,9 @@ from pathlib import Path
 
 from plimsoll import __version__
 from plimsoll.adapters import load_adapter_traces
+from plimsoll.cascade import cascade_telemetry, cascade_to_dict
 from plimsoll.diff import trajectory_diff
-from plimsoll.governor import Decision, Governor, coerce_partial_trace
+from plimsoll.governor import Decision, Governor, PlanFeasibility, coerce_partial_trace
 from plimsoll.io import load_json, load_policy, load_traces, write_json
 from plimsoll.models import TraceRun, ValidationError
 from plimsoll.otel import load_otel_traces
@@ -105,8 +106,32 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=None,
         metavar="FLOAT",
-        help="reliability floor in [0,1]: fail the run when pass^K falls below it. "
-        "Enables pass^k aggregation even without --passk.",
+        help="reliability floor in [0,1]: fail the run when the pass^K point estimate falls below it "
+        "(model-free combinatorial gate). Enables pass^k aggregation even without --passk.",
+    )
+    run.add_argument(
+        "--reliability-sla",
+        dest="reliability_sla",
+        type=float,
+        default=None,
+        metavar="FLOAT",
+        help="reliability SLA in [0,1]: fail the run when the LOWER Wilson confidence band on pass^K "
+        "misses it (honest worst-case gate — a lucky small-n run cannot sneak past). Also reports "
+        "the reliability decay curve, k* (largest k still clearing the SLA), and the Meltdown Onset Point.",
+    )
+    run.add_argument(
+        "--reliability-confidence",
+        dest="reliability_confidence",
+        type=float,
+        default=0.95,
+        metavar="FLOAT",
+        help="confidence level in (0,1) for the Wilson reliability band (default 0.95).",
+    )
+    run.add_argument(
+        "--cascade",
+        action="store_true",
+        help="emit cheap->expensive cascade telemetry (gate vs full audit: alpha / disagreement / "
+        "lossless), measured deterministically with zero model spend, into report.json.",
     )
     run.add_argument(
         "--json", dest="as_json", action="store_true", help="print a machine-readable JSON summary to stdout"
@@ -142,6 +167,15 @@ def build_parser() -> argparse.ArgumentParser:
         "(plus optional input/token/cost hints). Omit, or pass '-', to read it from stdin.",
     )
     governor.add_argument(
+        "--plan",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="dry-run a WHOLE proposed plan (a JSON list of calls) against the policy without "
+        "executing anything: the stage-1 feasibility / scoreTrace seam. Exits 0 if every step "
+        "clears the gate, 1 if any step is infeasible. Mutually exclusive with --call.",
+    )
+    governor.add_argument(
         "--partial-trace",
         dest="partial_trace",
         type=Path,
@@ -172,12 +206,22 @@ def run_command(args: argparse.Namespace) -> int:
         baseline = baseline_by_case.get(trace.case_id)
         findings = evaluate_trace(trace, policy, baseline)
         reports.append(build_case_report(trace, findings, trajectory_diff(trace, baseline, policy)))
-    # pass^k reliability is opt-in: it activates when either flag is given. It aggregates
-    # the per-run verdicts just built (grouped by case_id) — no trace is re-evaluated.
+    # pass^k reliability is opt-in: it activates when any reliability flag is given. It
+    # aggregates the per-run verdicts just built (grouped by case_id) — no trace is
+    # re-evaluated. --reliability-sla additionally arms the honest worst-case CI gate.
     passk = None
-    if args.passk is not None or args.passk_threshold is not None:
-        passk = aggregate_pass_k(reports, k=args.passk, threshold=args.passk_threshold)
-    payload = report_to_dict(reports, passk=passk)
+    if args.passk is not None or args.passk_threshold is not None or args.reliability_sla is not None:
+        passk = aggregate_pass_k(
+            reports,
+            k=args.passk,
+            threshold=args.passk_threshold,
+            sla=args.reliability_sla,
+            confidence=args.reliability_confidence,
+        )
+    # Cascade telemetry is opt-in and measured deterministically (gate replay vs full audit),
+    # so it costs no model spend. Omitting --cascade leaves report.json byte-identical.
+    cascade = cascade_to_dict(cascade_telemetry(traces, policy)) if args.cascade else None
+    payload = report_to_dict(reports, passk=passk, cascade=cascade)
     write_json(args.out / "report.json", payload)
     write_html_report(args.out / "report.html", reports, passk=passk)
     if args.junit is not None:
@@ -195,10 +239,13 @@ def run_command(args: argparse.Namespace) -> int:
     _maybe_write_step_summary(reports, passk)
     summary = summarize(reports)
     _emit_summary(args, summary, passk)
+    if cascade is not None and not args.quiet and not getattr(args, "as_json", False):
+        print(f"Plimsoll cascade: {cascade['measured_sentence']}", file=sys.stderr)
     if args.exit_zero:
         return EXIT_OK
-    # The pass^k gate (when armed) fails CI on its own, independent of per-run findings.
-    if summary["failed"] or (passk is not None and passk.gate_failed):
+    # Either reliability gate (the combinatorial floor or the CI band SLA), when armed, fails
+    # CI on its own, independent of per-run findings.
+    if summary["failed"] or (passk is not None and (passk.gate_failed or passk.sla_gate_failed)):
         return EXIT_FINDINGS
     return EXIT_OK
 
@@ -211,12 +258,22 @@ def init_policy_command(args: argparse.Namespace) -> int:
 
 
 def governor_command(args: argparse.Namespace) -> int:
-    """Gate one proposed tool call against a policy before it executes.
+    """Gate one proposed tool call — or dry-run a whole plan — against a policy before it runs.
 
-    Deterministic and offline: loads the policy, reconstructs the partial trace, and runs the
-    governor's decidable rule subset over the proposed call. Returns 0 (allow) or 1 (block).
+    Deterministic and offline. With ``--plan`` it dry-runs an entire proposed plan (the
+    stage-1 feasibility / scoreTrace seam) and exits 0 (feasible) or 1 (infeasible). Otherwise
+    it gates a single proposed call, exiting 0 (allow) or 1 (block).
     """
     policy = load_policy(args.policy)
+    if args.plan is not None:
+        if args.call is not None:
+            raise ValidationError("--plan and --call are mutually exclusive")
+        plan = load_json(args.plan)
+        if not isinstance(plan, list):
+            raise ValidationError("--plan must be a JSON list of proposed calls")
+        feasibility = Governor(policy).dry_run_plan(plan)
+        _emit_plan(args, feasibility)
+        return EXIT_OK if feasibility.feasible else EXIT_FINDINGS
     proposed_call = _read_json_input(args.call, "proposed tool call")
     partial_payload = load_json(args.partial_trace) if args.partial_trace is not None else None
     partial = coerce_partial_trace(partial_payload)
@@ -254,6 +311,22 @@ def _emit_decision(args: argparse.Namespace, decision: Decision) -> None:
         head = f"{color}{head}\033[0m"
     print(head, file=sys.stderr)
     for finding in decision.blocking_findings:
+        print(f"  - {finding.rule_id} [{finding.severity}]: {finding.message}", file=sys.stderr)
+
+
+def _emit_plan(args: argparse.Namespace, feasibility: PlanFeasibility) -> None:
+    """Print the whole-plan dry-run result (JSON to stdout, human line to stderr)."""
+    if getattr(args, "as_json", False):
+        print(json.dumps(feasibility.to_dict(), indent=2, sort_keys=True))
+        return
+    if args.quiet:
+        return
+    head = f"Plimsoll governor (dry-run): {feasibility.summary}"
+    if _use_color(args):
+        color = "\033[32m" if feasibility.feasible else "\033[31m"
+        head = f"{color}{head}\033[0m"
+    print(head, file=sys.stderr)
+    for finding in feasibility.blocking_findings:
         print(f"  - {finding.rule_id} [{finding.severity}]: {finding.message}", file=sys.stderr)
 
 

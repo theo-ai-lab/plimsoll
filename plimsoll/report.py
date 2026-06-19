@@ -16,6 +16,8 @@ from plimsoll.passk import (
     html_section,
     markdown_section,
     sarif_rule_and_result,
+    sla_gate_message,
+    sla_sarif_rule_and_result,
 )
 from plimsoll.rules import trace_metrics
 
@@ -62,6 +64,8 @@ RULE_DESCRIPTIONS = {
     "tool_order": "A high-risk tool ran before a required preceding step (e.g. an approval).",
     "reliability_pass_k": "The pass^k reliability metric fell below the configured floor "
     "(the agent is flaky across repeated runs of the same task).",
+    "reliability_sla": "The lower confidence bound on pass^k fell below the reliability SLA "
+    "(even in the worst case consistent with the runs, the agent cannot be certified at this k).",
 }
 
 
@@ -96,7 +100,11 @@ def summarize(reports: list[CaseReport]) -> dict[str, Any]:
     }
 
 
-def report_to_dict(reports: list[CaseReport], passk: PassKReport | None = None) -> dict[str, Any]:
+def report_to_dict(
+    reports: list[CaseReport],
+    passk: PassKReport | None = None,
+    cascade: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "summary": summarize(reports),
         "cases": [
@@ -122,6 +130,8 @@ def report_to_dict(reports: list[CaseReport], passk: PassKReport | None = None) 
     }
     if passk is not None:
         payload["reliability"] = passk.to_dict()
+    if cascade is not None:
+        payload["cascade"] = cascade
     return payload
 
 
@@ -129,10 +139,13 @@ def write_junit_report(path: Path, reports: list[CaseReport], passk: PassKReport
     path.parent.mkdir(parents=True, exist_ok=True)
     failures = sum(1 for report in reports if not report.passed)
     # When a pass^k gate is configured it appears as one extra testcase, failing iff the
-    # reliability floor is breached. Omitting passk leaves the suite byte-identical to before.
+    # reliability floor is breached. The reliability-SLA band gate, when armed, adds a second
+    # testcase. Omitting passk leaves the suite byte-identical to before.
     passk_failed = passk is not None and passk.gate_failed
-    total_tests = len(reports) + (1 if passk is not None else 0)
-    total_failures = failures + (1 if passk_failed else 0)
+    sla_enabled = passk is not None and passk.sla_gate_enabled
+    sla_failed = sla_enabled and passk.sla_gate_failed
+    total_tests = len(reports) + (1 if passk is not None else 0) + (1 if sla_enabled else 0)
+    total_failures = failures + (1 if passk_failed else 0) + (1 if sla_failed else 0)
     suite = ElementTree.Element(
         "testsuite",
         {
@@ -170,6 +183,19 @@ def write_junit_report(path: Path, reports: list[CaseReport], passk: PassKReport
                 {"message": f"pass^{passk.k} below floor", "type": "PlimsollReliability"},
             )
             failure.text = gate_message(passk)
+    if sla_enabled:
+        sla_case = ElementTree.SubElement(
+            suite,
+            "testcase",
+            {"classname": "Plimsoll", "name": f"reliability.sla_pass_caret_{passk.k}"},
+        )
+        if sla_failed:
+            sla_failure = ElementTree.SubElement(
+                sla_case,
+                "failure",
+                {"message": f"pass^{passk.k} lower band below SLA", "type": "PlimsollReliabilitySla"},
+            )
+            sla_failure.text = sla_gate_message(passk)
     tree = ElementTree.ElementTree(suite)
     ElementTree.indent(tree, space="  ")
     tree.write(path, encoding="utf-8", xml_declaration=True)
@@ -221,15 +247,16 @@ def write_sarif_report(
         }
         for finding in findings
     ]
-    # A failed pass^k gate joins the SARIF run as one extra rule + result, anchored to the
-    # same committed file. With passk omitted the output is byte-identical to before.
+    # A failed pass^k gate (and/or the reliability-SLA band gate) joins the SARIF run as an
+    # extra rule + result each, anchored to the same committed file. With passk omitted, or
+    # neither gate failing, the output is byte-identical to before.
     if passk is not None:
-        extra = sarif_rule_and_result(passk, anchor_uri)
-        if extra is not None:
-            rule, result = extra
-            result["ruleIndex"] = len(rules)
-            rules.append(rule)
-            results.append(result)
+        for extra in (sarif_rule_and_result(passk, anchor_uri), sla_sarif_rule_and_result(passk, anchor_uri)):
+            if extra is not None:
+                rule, result = extra
+                result["ruleIndex"] = len(rules)
+                rules.append(rule)
+                results.append(result)
     payload = {
         "version": "2.1.0",
         "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
