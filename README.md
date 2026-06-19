@@ -16,6 +16,12 @@
 
 You changed a prompt, a model, or some tool wiring. Your unit tests still pass, yet the agent quietly started calling the wrong tool, dropped a step, took three extra turns, or leaked a secret into a log, and you found out from a user. **Plimsoll is the deterministic floor under that problem:** point it at a trace you already recorded, check it against a declarative JSON policy and a known-good baseline, and fail the build on a regression, reproducibly and offline, with no tokens spent. It emits every format CI actually consumes (JSON, HTML, JUnit, SARIF, Markdown) and exits non-zero when a gate fails. It is *not* an LLM judge and does not score semantic quality; it is the cheap, reproducible layer you run on every PR.
 
+**One deterministic engine, three surfaces, zero runtime dependencies** — same pure-stdlib rules, same input, same finding, no model call:
+
+- **CI gate** — `plimsoll run` checks a recorded trace against a policy and baseline and fails the build on a regression (the quickstart below).
+- **Runtime governor** — `plimsoll governor`, and the `plimsoll-governor` MCP server, gate a proposed tool call *before* it executes ([Runtime governor](#runtime-governor-gate-a-tool-call-before-it-runs)).
+- **Reliability gate** — `--passk-threshold` fails the build when an agent is flaky across repeated runs of the same task ([pass^k](#reliability-passk-over-repeated-runs)).
+
 ## Quickstart
 
 Requires Python 3.11+. No runtime dependencies.
