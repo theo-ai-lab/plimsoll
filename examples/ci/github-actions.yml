@@ -56,6 +56,23 @@ jobs:
             --junit plimsoll-out/report.junit.xml \
             --md plimsoll-out/report.md
 
+      # --- Optional: reliability gate (pass^k) -------------------------------
+      # If you record the SAME task several times (multiple runs that share a
+      # case_id — a directory of runs, or a .jsonl), arm the reliability gate
+      # with --passk-threshold. pass^k is the fraction of tasks whose EVERY
+      # recorded run passed, so this fails the build when the agent is flaky
+      # across repeats, not just when a single run is bad. It is computed from
+      # the same per-run verdicts, so it stays deterministic and offline.
+      #   - name: Run Plimsoll reliability gate
+      #     run: |
+      #       plimsoll run \
+      #         --input runs/ \
+      #         --policy policy.json \
+      #         --out plimsoll-out \
+      #         --passk-threshold 0.9
+      # A committed, runnable example (a stable fixture that passes and a flaky
+      # one that fails) lives in examples/reliability/ — see its README.
+
       # --- Surface 1: Step summary -------------------------------------------
       # No extra step is required: when running inside Actions, Plimsoll
       # automatically appends its Markdown summary to $GITHUB_STEP_SUMMARY.

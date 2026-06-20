@@ -37,3 +37,30 @@ jobs:
         run: python scripts/smoke.py
         env:
           GITHUB_STEP_SUMMARY: ${{ runner.temp }}/plimsoll-selftest-summary.md
+      - name: pass^k reliability gate (self-test)
+        # Proves the pass^k gate is a real, armed CI gate — not just library code. It runs the
+        # gate against committed multi-run fixtures (3 recorded runs of one case_id, so k>1):
+        #   * the stable fixture (every run passed -> pass^3 = 1.0) must PASS the gate (exit 0);
+        #   * the flaky fixture (one run bypasses the approval -> pass^3 = 0.0) must FAIL it.
+        # The flaky run is expected to exit non-zero, so we assert that explicitly rather than
+        # letting it fail the job. This keeps the gate from silently rotting.
+        run: |
+          set -euo pipefail
+          echo "stable fixture (expect the reliability gate to PASS, exit 0):"
+          python -m plimsoll run \
+            --input examples/reliability/stable \
+            --policy examples/reliability/policy.json \
+            --out "$RUNNER_TEMP/passk-stable" \
+            --passk-threshold 0.9 --quiet
+          echo "flaky fixture (expect the reliability gate to FAIL the build, exit 1):"
+          if python -m plimsoll run \
+            --input examples/reliability/flaky \
+            --policy examples/reliability/policy.json \
+            --out "$RUNNER_TEMP/passk-flaky" \
+            --passk-threshold 0.9 --quiet; then
+            echo "::error::pass^k gate did not fail on the flaky fixture"
+            exit 1
+          fi
+          python -c "import json; r = json.load(open('$RUNNER_TEMP/passk-flaky/report.json'))['reliability']; assert r['gate'] == 'fail', r; print('flaky fixture correctly failed the reliability gate: pass^%d = %.3f' % (r['k'], r['pass_hat_k']))"
+        env:
+          GITHUB_STEP_SUMMARY: ${{ runner.temp }}/plimsoll-selftest-summary.md

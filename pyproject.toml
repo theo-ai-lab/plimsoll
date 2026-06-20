@@ -15,9 +15,17 @@ authors = [{ name = "theo-ai-lab" }]
 
 [project.scripts]
 plimsoll = "plimsoll.cli:main"
+# Long-running MCP server exposing the runtime governor (propose_tool_call + check_trace).
+# Requires the optional `mcp` extra below; the import stays lazy so the zero-dep core is
+# unaffected when `mcp` is not installed.
+plimsoll-governor = "plimsoll.governor_mcp:main"
 
 [project.optional-dependencies]
 dev = ["ruff>=0.6"]
+# Optional: the MCP SDK, needed only to serve the governor over MCP (`plimsoll-governor`).
+# The core engine, the `plimsoll` CLI, and the SDK-free GovernorTools/make_handlers surface
+# never import it, so the zero-runtime-dependency contract holds without this extra.
+mcp = ["mcp>=1.0"]
 # Optional, dev-only: needed solely to regenerate the real OpenTelemetry trace fixtures
 # (examples/access-request/build_real_otel_trace.py). NOT a runtime dependency — the
 # committed JSON fixtures are what Plimsoll ingests, and the core CLI has zero deps.

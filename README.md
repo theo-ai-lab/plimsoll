@@ -16,6 +16,12 @@
 
 You changed a prompt, a model, or some tool wiring. Your unit tests still pass, yet the agent quietly started calling the wrong tool, dropped a step, took three extra turns, or leaked a secret into a log, and you found out from a user. **Plimsoll is the deterministic floor under that problem:** point it at a trace you already recorded, check it against a declarative JSON policy and a known-good baseline, and fail the build on a regression, reproducibly and offline, with no tokens spent. It emits every format CI actually consumes (JSON, HTML, JUnit, SARIF, Markdown) and exits non-zero when a gate fails. It is *not* an LLM judge and does not score semantic quality; it is the cheap, reproducible layer you run on every PR.
 
+**One deterministic engine, three surfaces, zero runtime dependencies** — same pure-stdlib rules, same input, same finding, no model call:
+
+- **CI gate** — `plimsoll run` checks a recorded trace against a policy and baseline and fails the build on a regression (the quickstart below).
+- **Runtime governor** — `plimsoll governor`, and the `plimsoll-governor` MCP server, gate a proposed tool call *before* it executes ([Runtime governor](#runtime-governor-gate-a-tool-call-before-it-runs)).
+- **Reliability gate** — `--passk-threshold` fails the build when an agent is flaky across repeated runs of the same task, and `--reliability-sla` adds an honest worst-case gate on the *lower* edge of a calibrated confidence band so a lucky small-n run cannot sneak past ([reliability curve](#reliability-passk-over-repeated-runs)).
+
 ## Quickstart
 
 Requires Python 3.11+. No runtime dependencies.
@@ -101,6 +107,82 @@ Some failures are about *order*, not drift. `must_precede` declares pairs where 
 ```
 
 This catches the canonical agent-safety failure (performing a privileged action before its required approvals) as a **critical** finding. The rule constrains ordering only: an agent that refuses and escalates (never performing `after`) passes, so the gate never forces the high-risk action to occur. See the worked scenario below.
+
+## Runtime governor: gate a tool call before it runs
+
+The same deterministic engine also runs as a **pre-execution gate**. Instead of auditing a
+finished trace, the governor answers a live question — *given everything that has run so far,
+is it safe to make this next tool call?* — and blocks it before it executes. It enforces only
+the rules decidable before a call runs (allowlist/forbidden membership, `must_precede`
+ordering, cumulative budgets, repeated-action limits); rules that need the call's result or the
+finished trajectory stay deferred to the post-hoc `run` audit. Still no LLM, no network, no
+third-party import.
+
+`plimsoll governor` is the one-shot CLI gate. It reads a proposed tool call as JSON (a
+tool-name string, or an object with a `tool` field plus optional `input`/token/cost hints) from
+`--call` or stdin, takes the calls that already ran via `--partial-trace`, and exits non-zero
+when a rule blocks it:
+
+```bash
+# Forbidden tool: blocked outright (exit 1).
+echo '{"tool": "delete_database"}' | plimsoll governor --policy policy.json
+# Plimsoll governor: block 'delete_database'
+#   - forbidden_tool [critical]: Trace used forbidden tools.
+
+# Ordering: grant_access proposed after only a search has run, with no manager_review yet.
+echo '["search"]' > prior.json
+echo '{"tool": "grant_access"}' | plimsoll governor --policy policy.json --partial-trace prior.json
+# Plimsoll governor: block 'grant_access'
+#   - tool_order [critical]: 'grant_access' occurred before the required 'manager_review'.
+```
+
+For a long-running integration, `plimsoll-governor` serves the same gate over MCP (stdio) as
+two tools — `propose_tool_call` (the gate) and `check_trace` (the full audit) — so an MCP host
+or agent loop can consult it on every proposed tool call:
+
+```bash
+pip install "plimsoll[mcp]"   # the mcp SDK is an optional extra; the core stays zero-dependency
+plimsoll-governor --policy policy.json
+```
+
+If you would rather not depend on the MCP SDK at all, `plimsoll.governor_mcp.make_handlers`
+exposes the same two tools as plain `{name: callable}` JSON-in/JSON-out functions.
+[`examples/governor_loop_demo.py`](examples/governor_loop_demo.py) wires the gate into a
+scripted agent loop and verifies every decision against a ground-truth label.
+
+## Reliability: `pass^k` over repeated runs
+
+Stochastic agents are flaky — a task that passes once may fail on the next run. `pass^k` is the **tau-Bench reliability view**: record the *same* task `k` times and ask how often the agent gets it right *every* time, not just once. It is the fraction of tasks for which **all `k` recorded runs pass** (per-task estimator `C(c, k) / C(n, k)`; `pass^1 = pass@1` is the ordinary per-run rate, `pass^n` asks "did every recorded run pass?"). It is computed **deterministically and offline** — Plimsoll only counts the per-run verdicts it already produces (a run passes when it has no critical/high finding), grouped by `case_id`. No re-evaluation, no LLM, no tokens.
+
+It is report-only by default and becomes a **CI gate** the moment you set `--passk-threshold`:
+
+```bash
+plimsoll run --input runs/ --policy policy.json --out out --passk-threshold 0.9
+# Plimsoll reliability: pass@1=1.000 pass^1=1.000 over 1 task(s) x up to 1 run(s) [gate >= 0.900: PASS]
+```
+
+Point `--input` at multiple recorded runs of the same task (a directory or `.jsonl`, grouped by `case_id`) to get `k > 1`; below the threshold the gate fails the build (exit `1`). The `reliability` block (the full `pass^j` curve, per-task results, and gate verdict) is written into `report.json` and carried through the HTML/JUnit/SARIF/Markdown outputs.
+
+A committed, runnable example lives in [`examples/reliability/`](examples/reliability/) — a **stable** fixture (three runs of one task, all pass → `pass^3 = 1.0`, gate passes) and a **flaky** one (a run bypasses a required approval → `pass^3 = 0.0`, gate fails). The project's own CI runs both as a self-test, and [`examples/ci/github-actions.yml`](examples/ci/github-actions.yml) documents the `--passk-threshold` step.
+
+### Reliability decay curve and the worst-case SLA gate
+
+A fixed-`k` point estimate hides its own uncertainty: a lucky `2/2` run reports `pass^k = 1.0`, which would certify an agent on two samples. The **reliability decay curve** replaces that point with an interval. It pools the per-run verdicts into a single success probability `p`, estimates `p` with a **Wilson score interval** (a *calibrated* band, not a magic constant — Wilson keeps near-nominal coverage at the small `n` and extreme `p` agents live at, where the textbook Wald interval collapses to width 0 at `p = 1`), and projects the **Reliability Decay Curve** `pass^k = p^k` as a band `[p_low^k, p_high^k]`. Because `x → x^k` is monotone on `[0, 1]`, that band is an *exact* confidence interval for `p^k`.
+
+```bash
+plimsoll run --input runs/ --policy policy.json --out out --reliability-sla 0.9 --reliability-confidence 0.95
+# ... | p=0.667 [0.208,0.939] pass^3 band [0.009,0.827] SLA 0.900: k*=0 MOP=1 [CI gate: FAIL]
+```
+
+`--reliability-sla S` arms the **honest worst-case gate on the band's *lower* edge** (`reliability_sla`, distinct from the model-free `reliability_pass_k` floor): the build fails unless even the worst case consistent with the observed runs clears the SLA. The curve also surfaces **`k*`** — the largest `k` that still clears the SLA at the lower-band reliability — and the **Meltdown Onset Point (MOP)**, the first `k` where the SLA breaks (`k* + 1`). When trace data carries per-run durations, the curve adds rank-balanced **per-task-duration buckets**, each with its own Wilson CI (descriptive; no cross-bucket significance claimed). The decay is a sample-`k` saturation over a **fixed** gold set — for any per-run `p < 1` the all-`k`-pass reliability decays to 0, so the curve reports the per-run reliability `p` as the governing invariant rather than extrapolating a positive asymptote. *(The combinatorial `pass^k` floor is deliberately model-free / provable; the Wilson curve is the complementary model-based residual view — each gate is labelled with its regime and residual locus.)*
+
+### Cheap → expensive cascade telemetry (the deterministic floor)
+
+Plimsoll *is* the cheap, provable substrate, so it never invents an LLM tier to disagree with. Its one real cheap → expensive boundary is internal and deterministic: the pre-execution **gate** (the decidable-before-a-call rule subset, run incrementally) versus the full post-hoc **audit** (every rule over the complete trace). `--cascade` measures that boundary by replay — **zero model spend** — and emits, per boundary, `alpha` (fraction the cheap tier resolves before execution), `disagreementRate` (where the two tiers' verdicts differ), and `losslessViolations` (times the cheap fast path produced a verdict the audit would reverse).
+
+> **Measured** over the committed access-request corpus (`examples/access-request/traces`, 3 traces): Plimsoll's deterministic gate tier resolves **33% (1/3)** of traces before they execute at **0 lossless violations** and **0% disagreement** against the full audit — the cheap fast path never produced a verdict the expensive tier reverses, because the gate's rule subset is provably contained in the audit's.
+
+This makes Plimsoll the **stage-1 pruner** for a larger eval stack: a deterministic-first contract where the free, exact gate prunes unsafe trajectories before any expensive model-based scorer runs. The same seam is exposed directly as a **whole-plan dry-run** — `plimsoll governor --plan plan.json` gates an *entire* proposed plan against the policy without executing a tool or spending a token, returning a per-step feasibility verdict and a deterministic score (exit `0` feasible / `1` infeasible). The result-dependent rules (output match, leakage, drift) are not decidable on an un-executed plan and stay deferred to the post-hoc audit — exactly the gate/audit boundary the cascade measures.
 
 ## Why use Plimsoll
 
@@ -189,7 +271,7 @@ Regenerate it with `python scripts/build_access_request_demo.py`. Read [`BEFORE_
 
 ```bash
 python -m pip install -e '.[dev]'      # adds ruff (the only dev dependency)
-python -m unittest discover -s tests   # 67 tests
+python -m unittest discover -s tests   # 222 tests
 ruff check .
 python scripts/validate_public_fixtures.py
 ```
@@ -209,7 +291,6 @@ Plimsoll does not start a server, call an LLM, send telemetry, upload traces, or
 ## Roadmap
 
 - Outcome/state assertions and per-tool argument matching, alongside the sequence modes.
-- `pass@k` / `pass^k` aggregation over repeated recorded runs for stochastic agents.
 
 See [`CHANGELOG.md`](CHANGELOG.md) for release history and [`CONTRIBUTING.md`](CONTRIBUTING.md) to get involved.
 

@@ -9,6 +9,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Runtime governor** (`plimsoll/governor.py`): the same deterministic rule engine run as a
+  *pre-execution* gate. `Governor.evaluate(partial_trace, proposed_call)` decides whether a
+  proposed next tool call is safe given the trace so far, enforcing only the subset of rules
+  decidable before a call runs (allowlist/forbidden membership, `must_precede` ordering,
+  cumulative budgets, repeated-action limits). Rules that need the call's result, the whole
+  trajectory, or the finished run remain deferred to the post-hoc `check_trace` audit. No LLM,
+  no network, no third-party import — the same zero-dependency engine, evaluated at the gate.
+- **`plimsoll governor` CLI subcommand**: a one-shot, deterministic gate over a single proposed
+  tool call. Reads the call as JSON (a tool-name string or an object with a `tool` field) from
+  `--call PATH` or stdin, takes the calls that already ran via `--partial-trace`, evaluates it
+  against `--policy`, and prints the allow/block decision with the rule that fired. Exits `0` to
+  allow, `1` to block, `2` on a usage error; `--json` emits the machine-readable `Decision`.
+- Optional MCP-style tool surface for the governor (`plimsoll/governor_mcp.py`): the gate
+  (`propose_tool_call`) and the full audit (`check_trace`) as plain JSON-in/JSON-out
+  callables, with optional `mcp`-SDK server wiring. The `mcp` SDK is an optional extra; the
+  core engine never imports it.
+- **`plimsoll-governor` console script**: launches the governor as an MCP server (stdio) so an
+  MCP host can call `propose_tool_call`/`check_trace`. Requires the new optional `mcp` extra
+  (`pip install "plimsoll[mcp]"`); the import stays lazy, so the zero-dependency core install is
+  unaffected and the launcher exits with a clear install hint (no silent fallback) when the SDK
+  is absent.
+- **Armed `pass^k` CI gate** with committed multi-run fixtures (`examples/reliability/`): a
+  stable directory (three runs of one `case_id`, all pass → `pass^3 = 1.0`) and a flaky one
+  (one run bypasses the required approval → `pass^3 = 0.0`). The repo's own CI runs both as a
+  self-test — asserting the stable fixture passes the gate (exit `0`) and the flaky one fails it
+  (exit `1`) — and `examples/ci/github-actions.yml` documents the `--passk-threshold` step.
+- `examples/governor_loop_demo.py`: the governor firing as a live pre-execution gate over a
+  scripted agent loop, cross-checking every decision against a ground-truth label so the
+  "blocked N of M unsafe calls" headline is verified, not asserted.
+- `pass^k` reliability aggregation over repeated recorded runs of the same `case_id`
+  (`plimsoll/passk.py`): the tau-Bench reliability view (`pass^k` = fraction of tasks whose
+  every recorded run passed), computed deterministically and offline from the per-run verdicts
+  Plimsoll already produces. Report-only by default; `--passk-threshold` arms it as a CI gate
+  (`--passk` selects K). The `reliability` block threads through the JSON/HTML/JUnit/SARIF/Markdown
+  reports.
+- **Reliability decay curve with a calibrated confidence band** (`plimsoll/stats.py`,
+  `plimsoll/passk.py`): the fixed-`k` `pass^k` point is upgraded to a curve. The pooled per-run
+  success probability `p` is estimated with a **Wilson score interval** (calibrated, not a magic
+  constant — Acklam's inverse-normal quantile makes any confidence level exact, and Wilson keeps
+  near-nominal coverage at the small `n`/extreme `p` where Wald collapses), and `pass^k = p^k` is
+  projected as a band `[p_low^k, p_high^k]` (an exact CI via the monotone transform). Surfaces the
+  Reliability Decay Curve, `k*` (largest `k` clearing the SLA), the **Meltdown Onset Point**, the
+  per-run reliability as the governing invariant (no positive asymptote for `p < 1`; sample-`k`
+  decay over a *fixed* gold set, never extrapolated over gold-set size), and optional
+  rank-balanced per-task-duration buckets when trace data carries durations.
+- **`--reliability-sla` honest worst-case gate**: a CI gate on the *lower* edge of the Wilson
+  `pass^k` band (rule `reliability_sla`, distinct from the model-free `reliability_pass_k` floor),
+  so a lucky small-`n` run with a wide band cannot certify the SLA. `--reliability-confidence` sets
+  the band width (default `0.95`). Both gates fail the build independently and emit their own
+  JUnit testcase and SARIF result.
+- **Cheap → expensive cascade telemetry** (`plimsoll/cascade.py`, `--cascade`): measures
+  Plimsoll's one real deterministic boundary — the pre-execution gate vs. the full post-hoc audit
+  — by replay, at zero model spend, emitting the suite-wide contract shape `{alpha,
+  disagreementRate, losslessViolations}` per boundary plus a regime/residual-locus label for every
+  gate (model-free/provable vs. model-based residual). The gate's rule subset is provably contained
+  in the audit's, so `losslessViolations` is 0 and disagreement is always in the safe direction.
+- **Whole-plan policy dry-run** (`Governor.dry_run_plan`, `plimsoll governor --plan`): the stage-1
+  feasibility / scoreTrace seam — gates an entire proposed plan against the policy without
+  executing a tool or spending a token, returning a per-step verdict, the first blocking step, and
+  a deterministic feasibility score (exit `0` feasible / `1` infeasible). Exact within the gate's
+  decidable rule subset, so a deterministic-first planner can prune infeasible trajectories before
+  paying an expensive model to score them.
 - A runnable 12-case head-to-head benchmark against promptfoo on deterministic
   trace-regression detection (`examples/benchmark/` + `docs/BENCHMARK_vs_promptfoo.md`).
   Every Plimsoll case is run for real; the scorecard is honest about ties, the one

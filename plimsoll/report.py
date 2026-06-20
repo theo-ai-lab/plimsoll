@@ -10,6 +10,15 @@ from xml.etree import ElementTree
 
 from plimsoll import __version__
 from plimsoll.models import CaseReport, Finding, TraceRun
+from plimsoll.passk import (
+    PassKReport,
+    gate_message,
+    html_section,
+    markdown_section,
+    sarif_rule_and_result,
+    sla_gate_message,
+    sla_sarif_rule_and_result,
+)
 from plimsoll.rules import trace_metrics
 
 SEVERITY_WEIGHTS = {"critical": 45, "high": 30, "medium": 15, "low": 5}
@@ -53,6 +62,10 @@ RULE_DESCRIPTIONS = {
     "trajectory_drift": "The tool sequence drifted beyond the allowed edit distance from the baseline.",
     "trajectory_mismatch": "The tool trajectory did not satisfy the configured baseline match mode.",
     "tool_order": "A high-risk tool ran before a required preceding step (e.g. an approval).",
+    "reliability_pass_k": "The pass^k reliability metric fell below the configured floor "
+    "(the agent is flaky across repeated runs of the same task).",
+    "reliability_sla": "The lower confidence bound on pass^k fell below the reliability SLA "
+    "(even in the worst case consistent with the runs, the agent cannot be certified at this k).",
 }
 
 
@@ -87,8 +100,12 @@ def summarize(reports: list[CaseReport]) -> dict[str, Any]:
     }
 
 
-def report_to_dict(reports: list[CaseReport]) -> dict[str, Any]:
-    return {
+def report_to_dict(
+    reports: list[CaseReport],
+    passk: PassKReport | None = None,
+    cascade: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
         "summary": summarize(reports),
         "cases": [
             {
@@ -111,17 +128,30 @@ def report_to_dict(reports: list[CaseReport]) -> dict[str, Any]:
             for report in reports
         ],
     }
+    if passk is not None:
+        payload["reliability"] = passk.to_dict()
+    if cascade is not None:
+        payload["cascade"] = cascade
+    return payload
 
 
-def write_junit_report(path: Path, reports: list[CaseReport]) -> None:
+def write_junit_report(path: Path, reports: list[CaseReport], passk: PassKReport | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     failures = sum(1 for report in reports if not report.passed)
+    # When a pass^k gate is configured it appears as one extra testcase, failing iff the
+    # reliability floor is breached. The reliability-SLA band gate, when armed, adds a second
+    # testcase. Omitting passk leaves the suite byte-identical to before.
+    passk_failed = passk is not None and passk.gate_failed
+    sla_enabled = passk is not None and passk.sla_gate_enabled
+    sla_failed = sla_enabled and passk.sla_gate_failed
+    total_tests = len(reports) + (1 if passk is not None else 0) + (1 if sla_enabled else 0)
+    total_failures = failures + (1 if passk_failed else 0) + (1 if sla_failed else 0)
     suite = ElementTree.Element(
         "testsuite",
         {
             "name": "Plimsoll",
-            "tests": str(len(reports)),
-            "failures": str(failures),
+            "tests": str(total_tests),
+            "failures": str(total_failures),
             "errors": "0",
         },
     )
@@ -140,6 +170,32 @@ def write_junit_report(path: Path, reports: list[CaseReport]) -> None:
             failure.text = "\n".join(
                 f"{finding.rule_id} [{finding.severity}]: {finding.message}" for finding in report.findings
             )
+    if passk is not None:
+        case = ElementTree.SubElement(
+            suite,
+            "testcase",
+            {"classname": "Plimsoll", "name": f"reliability.pass_caret_{passk.k}"},
+        )
+        if passk_failed:
+            failure = ElementTree.SubElement(
+                case,
+                "failure",
+                {"message": f"pass^{passk.k} below floor", "type": "PlimsollReliability"},
+            )
+            failure.text = gate_message(passk)
+    if sla_enabled:
+        sla_case = ElementTree.SubElement(
+            suite,
+            "testcase",
+            {"classname": "Plimsoll", "name": f"reliability.sla_pass_caret_{passk.k}"},
+        )
+        if sla_failed:
+            sla_failure = ElementTree.SubElement(
+                sla_case,
+                "failure",
+                {"message": f"pass^{passk.k} lower band below SLA", "type": "PlimsollReliabilitySla"},
+            )
+            sla_failure.text = sla_gate_message(passk)
     tree = ElementTree.ElementTree(suite)
     ElementTree.indent(tree, space="  ")
     tree.write(path, encoding="utf-8", xml_declaration=True)
@@ -150,6 +206,7 @@ def write_sarif_report(
     reports: list[CaseReport],
     policy_path: Path | None = None,
     input_path: Path | None = None,
+    passk: PassKReport | None = None,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     findings = [finding for report in reports for finding in report.findings]
@@ -190,6 +247,16 @@ def write_sarif_report(
         }
         for finding in findings
     ]
+    # A failed pass^k gate (and/or the reliability-SLA band gate) joins the SARIF run as an
+    # extra rule + result each, anchored to the same committed file. With passk omitted, or
+    # neither gate failing, the output is byte-identical to before.
+    if passk is not None:
+        for extra in (sarif_rule_and_result(passk, anchor_uri), sla_sarif_rule_and_result(passk, anchor_uri)):
+            if extra is not None:
+                rule, result = extra
+                result["ruleIndex"] = len(rules)
+                rules.append(rule)
+                results.append(result)
     payload = {
         "version": "2.1.0",
         "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
@@ -277,7 +344,7 @@ def _sarif_fingerprint(finding: Finding) -> str:
     return hashlib.sha256(basis.encode("utf-8")).hexdigest()[:20]
 
 
-def render_markdown(reports: list[CaseReport]) -> str:
+def render_markdown(reports: list[CaseReport], passk: PassKReport | None = None) -> str:
     """Render a GitHub-flavored Markdown summary (for PR comments and the CI step summary)."""
     summary = summarize(reports)
     verdict = "❌ FAIL" if summary["failed"] else "✅ PASS"
@@ -304,12 +371,14 @@ def render_markdown(reports: list[CaseReport]) -> str:
     else:
         lines.append("No findings. All checked cases passed critical and high-severity gates.")
     lines.append("")
+    if passk is not None:
+        lines.append(markdown_section(passk))
     return "\n".join(lines)
 
 
-def write_markdown_report(path: Path, reports: list[CaseReport]) -> None:
+def write_markdown_report(path: Path, reports: list[CaseReport], passk: PassKReport | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(render_markdown(reports), encoding="utf-8")
+    path.write_text(render_markdown(reports, passk), encoding="utf-8")
 
 
 _RULE_PROVENANCE = {
@@ -470,19 +539,19 @@ d.querySelectorAll('pre[data-copy]').forEach(function(pre){var btn=d.createEleme
 """
 
 
-def write_html_report(path: Path, reports: list[CaseReport]) -> None:
+def write_html_report(path: Path, reports: list[CaseReport], passk: PassKReport | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     summary = summarize(reports)
     case_label = f'<div class="seclabel">Case &middot; {summary["cases"]} total</div>' if reports else ""
-    body = "\n".join(
-        [
-            _verdict_band(reports, summary),
-            _stat_cards(summary),
-            _finding_summary(reports),
-            case_label,
-            "\n".join(_case_block(report) for report in reports),
-        ]
-    )
+    parts = [_verdict_band(reports, summary), _stat_cards(summary)]
+    if passk is not None:
+        parts.append(html_section(passk))
+    parts += [
+        _finding_summary(reports),
+        case_label,
+        "\n".join(_case_block(report) for report in reports),
+    ]
+    body = "\n".join(parts)
     head_script = (
         "<script>try{var e=document.documentElement;e.classList.add('js');"
         "var t=localStorage.getItem('tp-theme');if(t)e.setAttribute('data-theme',t);}catch(_){}</script>"
