@@ -1,0 +1,18 @@
+{
+  "$schema": "../../docs/policy.schema.json",
+  "version": "1",
+  "allowed_tools": [
+    "search_tickets",
+    "read_record",
+    "manager_review",
+    "security_review",
+    "grant_access",
+    "summarize",
+    "notify"
+  ],
+  "must_precede": [
+    {"before": "manager_review", "after": "grant_access"},
+    {"before": "security_review", "after": "grant_access"}
+  ],
+  "max_tokens": 4000
+}

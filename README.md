@@ -145,6 +145,12 @@ pip install "plimsoll[mcp]"   # the mcp SDK is an optional extra; the core stays
 plimsoll-governor --policy policy.json
 ```
 
+[docs/MCP_DEMO.md](docs/MCP_DEMO.md) has the host wiring (`.mcp.json`) and a committed,
+replayable JSON-RPC session against the real server —
+[`examples/mcp-governor-session/`](examples/mcp-governor-session/) — showing an allow, a
+`tool_order` deny of the task's own goal action, and a `max_tokens` budget block, all
+decided before execution.
+
 If you would rather not depend on the MCP SDK at all, `plimsoll.governor_mcp.make_handlers`
 exposes the same two tools as plain `{name: callable}` JSON-in/JSON-out functions.
 [`examples/governor_loop_demo.py`](examples/governor_loop_demo.py) wires the gate into a
@@ -271,7 +277,7 @@ Regenerate it with `python scripts/build_access_request_demo.py`. Read [`BEFORE_
 
 ```bash
 python -m pip install -e '.[dev]'      # adds ruff (the only dev dependency)
-python -m unittest discover -s tests   # 222 tests
+python -m unittest discover -s tests   # 227 tests
 ruff check .
 python scripts/validate_public_fixtures.py
 ```

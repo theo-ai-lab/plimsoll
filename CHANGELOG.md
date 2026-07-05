@@ -43,6 +43,16 @@ their dates record local development milestones, not public releases.
 - `examples/governor_loop_demo.py`: the governor firing as a live pre-execution gate over a
   scripted agent loop, cross-checking every decision against a ground-truth label so the
   "blocked N of M unsafe calls" headline is verified, not asserted.
+- **Recorded MCP governor session** (`examples/mcp-governor-session/`, `docs/MCP_DEMO.md`): a
+  committed JSON-RPC stdio transcript of the real `plimsoll-governor` server refusing tool
+  calls pre-execution — one allow, one `tool_order` deny of the task's own goal action, one
+  `max_tokens` budget block. Captured by a scripted deterministic client
+  (`scripts/build_mcp_governor_session.py`, stdlib-only, double-captures and byte-compares to
+  verify determinism; not a live-model session) and pinned to the engine by
+  `tests/test_governor_mcp_session.py`, which replays the transcript SDK-free on every run and
+  end-to-end against a real server subprocess when the `mcp` extra is installed.
+  `docs/MCP_DEMO.md` documents the `.mcp.json` host wiring and the three-outcome walkthrough;
+  `demo/mcp-governor.{tape,gif}` record the session run.
 - `pass^k` reliability aggregation over repeated recorded runs of the same `case_id`
   (`plimsoll/passk.py`): the tau-Bench reliability view (`pass^k` = fraction of tasks whose
   every recorded run passed), computed deterministically and offline from the per-run verdicts
