@@ -193,7 +193,7 @@ their dates record local development milestones, not public releases.
 
 ### Added
 
-- Initial public release: a deterministic, dependency-free trace-regression CLI for AI
+- Initial release: a deterministic, dependency-free trace-regression CLI for AI
   agent execution traces.
 - Native trace input plus subset adapters for OpenTelemetry, OpenInference, LangGraph,
   and OpenAI Agents shaped local JSON.
