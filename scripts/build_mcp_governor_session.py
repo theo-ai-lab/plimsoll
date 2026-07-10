@@ -155,16 +155,20 @@ class StdioServer:
             line = self._lines.get(timeout=timeout)
         except queue.Empty:
             self.proc.kill()
-            raise RuntimeError(f"no server response within {timeout:.0f}s") from None
+            # A hung server (e.g. an SDK incompatibility stalling initialize) is diagnosed
+            # from its stderr, same as an exited one.
+            raise RuntimeError(f"no server response within {timeout:.0f}s\n{self._stderr_report()}") from None
         if line is None:
-            tail = "\n".join(self._stderr_tail)
             raise RuntimeError(
                 "server closed stdout before responding "
                 f"(exit code {self.proc.poll()}). Is the optional MCP extra installed? "
                 'Run: pip install "plimsoll[mcp]"\n'
-                f"server stderr tail:\n{tail}"
+                f"{self._stderr_report()}"
             )
         return json.loads(line)
+
+    def _stderr_report(self) -> str:
+        return "server stderr tail:\n" + "\n".join(self._stderr_tail)
 
     def close(self) -> int:
         # Closing stdin is the MCP stdio shutdown signal: the server exits at EOF.
