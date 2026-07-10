@@ -12,6 +12,8 @@
 
 ![Plimsoll HTML report showing a caught regression](docs/assets/report.png)
 
+**[See this report live](https://theo-ai-lab.github.io/plimsoll/)** — the same failing HTML report, served from the committed sample output, so you can inspect what Plimsoll produces before cloning anything.
+
 ![How Plimsoll works: a recorded agent trace flows through an adapter, is checked against a policy and baseline by deterministic rules, and emits JSON/HTML/JUnit/SARIF/Markdown reports plus a CI pass/fail exit code, fully offline with zero runtime dependencies](docs/assets/architecture.png)
 
 You changed a prompt, a model, or some tool wiring. Your unit tests still pass, yet the agent quietly started calling the wrong tool, dropped a step, took three extra turns, or leaked a secret into a log, and you found out from a user. **Plimsoll is the deterministic floor under that problem:** point it at a trace you already recorded, check it against a declarative JSON policy and a known-good baseline, and fail the build on a regression, reproducibly and offline, with no tokens spent. It emits every format CI actually consumes (JSON, HTML, JUnit, SARIF, Markdown) and exits non-zero when a gate fails. It is *not* an LLM judge and does not score semantic quality; it is the cheap, reproducible layer you run on every PR.
