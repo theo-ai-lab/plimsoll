@@ -5,7 +5,7 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-Versions prior to 0.9.0 were developed locally before this repository was published;
+Versions prior to 1.0.0 were developed locally before this repository was published;
 their dates record local development milestones, not public releases.
 
 ## [Unreleased]
