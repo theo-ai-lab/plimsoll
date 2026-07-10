@@ -104,10 +104,11 @@ PyPI. Update the date if needed and remove this notice when the tag is cut._
 - The human summary line prints finding counts in plain English — `findings: 3 critical,
   3 high, 3 medium` (or `findings: none`) — instead of a Python dict repr. The machine
   contract is unchanged: `--json` and `report.json` still carry `severity_counts` as a map.
-- Governor block messages are phrased for the proposed call — `'deploy' is forbidden by
-  policy.`, `'summarize' would exceed the tokens budget.` — instead of reusing the audit's
-  finished-trace copy (`Trace used forbidden tools.`). Rule ids, severities, and evidence
-  are unchanged, and the post-hoc `run` audit's messages are untouched.
+- Governor block messages are phrased for the proposed call and name the overrun —
+  `'deploy' is forbidden by policy.`, `'summarize' would exceed the token budget
+  (4160 > 4000).` — instead of reusing the audit's finished-trace copy (`Trace used
+  forbidden tools.`). Rule ids, severities, and evidence are unchanged, and the post-hoc
+  `run` audit's messages are untouched.
 
 ### Fixed
 

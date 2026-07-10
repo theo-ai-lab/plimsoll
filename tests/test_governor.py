@@ -133,13 +133,36 @@ class GovernorMessagePhrasingTests(unittest.TestCase):
         message = self._only_message(
             Policy(max_tokens=100), [{"tool": "search", "input_tokens": 60}], {"tool": "summarize", "input_tokens": 50}
         )
-        self.assertEqual(message, "'summarize' would exceed the tokens budget.")
+        self.assertEqual(message, "'summarize' would exceed the token budget (110 > 100).")
         message = self._only_message(
             Policy(max_repeated_action_count=1),
             [{"tool": "fetch", "input": {"url": "u"}}],
             {"tool": "fetch", "input": {"url": "u"}},
         )
         self.assertEqual(message, "'fetch' would repeat an identical action more than the policy allows.")
+
+    def test_every_budget_block_names_a_human_metric_and_the_overrun(self) -> None:
+        # No internal snake_case (duration_ms, estimated_cost_usd) may reach the human copy,
+        # and the message must say by how much the call overruns, not just that it does.
+        message = self._only_message(Policy(max_steps=2), ["a", "b"], "c")
+        self.assertEqual(message, "'c' would exceed the step budget (3 > 2).")
+        message = self._only_message(
+            Policy(max_duration_ms=1000), [{"tool": "a", "duration_ms": 800}], {"tool": "b", "duration_ms": 300}
+        )
+        self.assertEqual(message, "'b' would exceed the duration budget (1100 > 1000).")
+        message = self._only_message(
+            Policy(max_estimated_cost_usd=1.0),
+            [{"tool": "a", "estimated_cost_usd": 0.75}],
+            {"tool": "b", "estimated_cost_usd": 0.5},
+        )
+        self.assertEqual(message, "'b' would exceed the estimated-cost budget (1.25 > 1.0).")
+
+    def test_gate_noun_table_covers_exactly_the_audit_budget_vocabulary(self) -> None:
+        # A budget rule added in rules.py must get a conscious human noun here, or the
+        # gate would silently fall back to the audit's finished-trace copy for it.
+        from plimsoll import governor, rules
+
+        self.assertEqual(set(governor._BUDGET_NOUNS), set(rules.BUDGET_RULES))
 
     def test_rephrasing_keeps_rule_id_severity_and_evidence(self) -> None:
         decision = Governor(Policy(forbidden_tools={"deploy"})).evaluate([], "deploy")

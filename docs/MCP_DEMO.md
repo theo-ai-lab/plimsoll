@@ -116,7 +116,7 @@ this call would take the cumulative total to 4160 — over the policy's 4000 cap
  "summary": "block: 'summarize' blocked by max_tokens",
  "blocking_findings": [
    {"rule_id": "max_tokens", "severity": "medium",
-    "message": "'summarize' would exceed the tokens budget.",
+    "message": "'summarize' would exceed the token budget (4160 > 4000).",
     "evidence": {"actual": 4160, "limit": 4000}}]}
 ```
 

@@ -123,16 +123,22 @@ def check_tool_policy(trace: TraceRun, policy: Policy) -> list[Finding]:
     return findings
 
 
+# The budget-rule vocabulary: rule id -> the trace metric it caps. The Policy attribute
+# holding each limit shares the rule id's name. ``plimsoll.governor`` keys its gate copy
+# off this mapping, so a budget rule added here cannot silently drift out of the gate.
+BUDGET_RULES: dict[str, str] = {
+    "max_steps": "steps",
+    "max_duration_ms": "duration_ms",
+    "max_tokens": "tokens",
+    "max_estimated_cost_usd": "estimated_cost_usd",
+}
+
+
 def check_budgets(trace: TraceRun, policy: Policy) -> list[Finding]:
     findings: list[Finding] = []
     metrics = trace_metrics(trace)
-    limits = {
-        "max_steps": ("steps", policy.max_steps),
-        "max_duration_ms": ("duration_ms", policy.max_duration_ms),
-        "max_tokens": ("tokens", policy.max_tokens),
-        "max_estimated_cost_usd": ("estimated_cost_usd", policy.max_estimated_cost_usd),
-    }
-    for rule_id, (metric_name, limit) in limits.items():
+    for rule_id, metric_name in BUDGET_RULES.items():
+        limit = getattr(policy, rule_id)
         if limit is not None and metrics[metric_name] > limit:
             findings.append(
                 Finding(

@@ -47,8 +47,16 @@ from plimsoll.rules import (
 # tool is legitimately absent mid-run — so it is not a gate rule.)
 _MEMBERSHIP_GATE_RULES = {"forbidden_tool", "tool_allowlist"}
 
-# The budget rules the gate evaluates cumulatively (partial trace + proposed call).
-_BUDGET_GATE_RULES = {"max_steps", "max_duration_ms", "max_tokens", "max_estimated_cost_usd"}
+# A human noun for each budget metric, for the gate's per-call copy ("would exceed the
+# token budget") — internal metric names like duration_ms never reach users. Keyed by the
+# audit's own budget vocabulary (rules.BUDGET_RULES); a test pins the two sets, so a budget
+# rule added in rules.py cannot silently keep the audit's finished-trace copy at the gate.
+_BUDGET_NOUNS = {
+    "max_steps": "step",
+    "max_duration_ms": "duration",
+    "max_tokens": "token",
+    "max_estimated_cost_usd": "estimated-cost",
+}
 
 # Keys that mark a fully-specified span (native/OTel shape) vs. a shorthand call dict.
 _FULL_SPAN_KEYS = {"span_id", "name", "kind", "status", "start_ms", "end_ms"}
@@ -67,9 +75,9 @@ def _call_phrased(finding: Finding, tool: str) -> Finding:
         return replace(finding, message=f"'{tool}' is not in the allowlist.")
     if finding.rule_id == "forbidden_tool":
         return replace(finding, message=f"'{tool}' is forbidden by policy.")
-    if finding.rule_id in _BUDGET_GATE_RULES:
-        metric = finding.rule_id.removeprefix("max_")
-        return replace(finding, message=f"'{tool}' would exceed the {metric} budget.")
+    if finding.rule_id in _BUDGET_NOUNS:
+        overrun = f"({finding.evidence['actual']} > {finding.evidence['limit']})"
+        return replace(finding, message=f"'{tool}' would exceed the {_BUDGET_NOUNS[finding.rule_id]} budget {overrun}.")
     if finding.rule_id == "repeated_action":
         return replace(finding, message=f"'{tool}' would repeat an identical action more than the policy allows.")
     return finding
