@@ -1,4 +1,4 @@
-"""Whole-plan policy dry-run: the stage-1 feasibility / scoreTrace seam.
+"""Whole-plan policy dry-run: gate an entire proposed plan before anything executes.
 
 ``Governor.dry_run_plan`` gates an entire proposed plan against the policy WITHOUT executing
 a tool or spending a token. Within the gate's decidable rule subset it is exact (no false

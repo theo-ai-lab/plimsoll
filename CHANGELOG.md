@@ -80,12 +80,12 @@ their dates record local development milestones, not public releases.
   disagreementRate, losslessViolations}` per boundary plus a regime/residual-locus label for every
   gate (model-free/provable vs. model-based residual). The gate's rule subset is provably contained
   in the audit's, so `losslessViolations` is 0 and disagreement is always in the safe direction.
-- **Whole-plan policy dry-run** (`Governor.dry_run_plan`, `plimsoll governor --plan`): the stage-1
-  feasibility / scoreTrace seam — gates an entire proposed plan against the policy without
-  executing a tool or spending a token, returning a per-step verdict, the first blocking step, and
-  a deterministic feasibility score (exit `0` feasible / `1` infeasible). Exact within the gate's
-  decidable rule subset, so a deterministic-first planner can prune infeasible trajectories before
-  paying an expensive model to score them.
+- **Whole-plan policy dry-run** (`Governor.dry_run_plan`, `plimsoll governor --plan`): gates an
+  entire proposed plan against the policy without executing a tool or spending a token, returning
+  a per-step verdict, the first blocking step, and a deterministic feasibility score (exit `0`
+  feasible / `1` infeasible). Exact within the gate's decidable rule subset, so a
+  deterministic-first planner can prune infeasible trajectories before paying an expensive model
+  to score them.
 - A runnable 12-case head-to-head benchmark against promptfoo on deterministic
   trace-regression detection (`examples/benchmark/` + `docs/BENCHMARK_vs_promptfoo.md`).
   Every Plimsoll case is run for real; the scorecard is honest about ties, the one

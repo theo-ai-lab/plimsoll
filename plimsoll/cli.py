@@ -117,7 +117,8 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="FLOAT",
         help="reliability SLA in [0,1]: fail the run when the LOWER Wilson confidence band on pass^K "
         "misses it (honest worst-case gate — a lucky small-n run cannot sneak past). Also reports "
-        "the reliability decay curve, k* (largest k still clearing the SLA), and the Meltdown Onset Point.",
+        "the reliability decay curve, k* (the largest k still clearing the SLA), and the first k "
+        "where the SLA breaks (the Meltdown Onset Point).",
     )
     run.add_argument(
         "--reliability-confidence",
@@ -171,8 +172,8 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         metavar="PATH",
-        help="dry-run a WHOLE proposed plan (a JSON list of calls) against the policy without "
-        "executing anything: the stage-1 feasibility / scoreTrace seam. Exits 0 if every step "
+        help="dry-run a WHOLE proposed plan (a JSON list of calls) against the policy before "
+        "anything executes — no tool call made, no token spent. Exits 0 if every step "
         "clears the gate, 1 if any step is infeasible. Mutually exclusive with --call.",
     )
     governor.add_argument(
@@ -260,8 +261,8 @@ def init_policy_command(args: argparse.Namespace) -> int:
 def governor_command(args: argparse.Namespace) -> int:
     """Gate one proposed tool call — or dry-run a whole plan — against a policy before it runs.
 
-    Deterministic and offline. With ``--plan`` it dry-runs an entire proposed plan (the
-    stage-1 feasibility / scoreTrace seam) and exits 0 (feasible) or 1 (infeasible). Otherwise
+    Deterministic and offline. With ``--plan`` it dry-runs an entire proposed plan against
+    the policy before anything executes and exits 0 (feasible) or 1 (infeasible). Otherwise
     it gates a single proposed call, exiting 0 (allow) or 1 (block).
     """
     policy = load_policy(args.policy)

@@ -279,8 +279,9 @@ class Governor:
         ``plan`` is an ordered list of proposed calls (``ProposedToolCall``, tool-name str,
         or JSON object). Each step is gated against the steps before it; the result reports
         every per-step decision, the first blocking step (if any), and a deterministic
-        feasibility score. This is the stage-1 feasibility / scoreTrace seam — the exact,
-        token-free pruner for a deterministic-first MPC planner.
+        feasibility score. A planner can use this to prune infeasible plans before any tool
+        executes or a token is spent; within the gate's decidable rule subset the check is
+        exact.
         """
         calls = [ProposedToolCall.from_obj(item) for item in plan]
         decisions: list[Decision] = []
