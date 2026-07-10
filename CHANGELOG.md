@@ -10,7 +10,10 @@ their dates record local development milestones, not public releases.
 
 ## [Unreleased]
 
-## [1.0.0] - 2026-07-04
+## [1.0.0] - 2026-07-10
+
+_Prepared, not yet released: the `v1.0.0` tag has not been pushed and the package is not on
+PyPI. Update the date if needed and remove this notice when the tag is cut._
 
 ### Added
 
@@ -101,6 +104,12 @@ their dates record local development milestones, not public releases.
 - The human summary line prints finding counts in plain English — `findings: 3 critical,
   3 high, 3 medium` (or `findings: none`) — instead of a Python dict repr. The machine
   contract is unchanged: `--json` and `report.json` still carry `severity_counts` as a map.
+
+### Fixed
+
+- An unreadable trace, policy, `--call`, `--plan`, or `--partial-trace` path (missing file,
+  permission error) now exits `2` with a clean `error:` line instead of an unhandled
+  traceback, matching the documented exit-code contract.
 
 ## [0.9.0] - 2026-05-31
 
