@@ -1,7 +1,8 @@
 # Plimsoll MCP governor demo tape for charmbracelet/vhs.
 # The committed demo/mcp-governor.gif is rendered from this tape; regenerate it after
 # changing the scripted session with:  vhs demo/mcp-governor.tape
-# The active environment needs the optional MCP extra: pip install "plimsoll[mcp]"
+# The active environment needs the optional MCP extra (from a clone):
+#   python -m pip install -e '.[mcp]'
 
 Output demo/mcp-governor.gif
 

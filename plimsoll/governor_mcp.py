@@ -156,8 +156,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if not _HAS_MCP:
         print(
-            "error: the 'mcp' SDK is not installed. Install the optional extra with "
-            '`pip install "plimsoll[mcp]"` (or `pip install mcp`) to serve the governor over MCP. '
+            "error: the 'mcp' SDK is not installed. Install the optional extra "
+            "(from a clone: `python -m pip install -e '.[mcp]'`, or `pip install mcp`) "
+            "to serve the governor over MCP. "
             "The SDK-free callable surface (make_handlers / GovernorTools) works without it.",
             file=sys.stderr,
         )

@@ -19,7 +19,7 @@ The session walks one access-request episode through three gate outcomes:
 
 The client speaks raw newline-delimited JSON-RPC 2.0 over the subprocess pipes (the MCP
 stdio transport) using only the standard library, so nothing here depends on the ``mcp``
-SDK — only the server subprocess does (``pip install "plimsoll[mcp]"``).
+SDK — only the server subprocess does (from a clone: ``python -m pip install -e '.[mcp]'``).
 
 Every verdict is verified against the scripted expectation, and the whole session is
 captured twice and byte-compared, so the "deterministic" claim is checked on every run,
@@ -162,7 +162,7 @@ class StdioServer:
             raise RuntimeError(
                 "server closed stdout before responding "
                 f"(exit code {self.proc.poll()}). Is the optional MCP extra installed? "
-                'Run: pip install "plimsoll[mcp]"\n'
+                "From a clone, run: python -m pip install -e '.[mcp]'\n"
                 f"{self._stderr_report()}"
             )
         return json.loads(line)
