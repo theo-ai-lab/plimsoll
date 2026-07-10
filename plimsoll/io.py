@@ -10,14 +10,22 @@ from plimsoll.models import Policy, Span, TraceRun, ValidationError
 
 def load_json(path: Path) -> Any:
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        return json.loads(_read_text(path))
     except json.JSONDecodeError as exc:
         raise ValidationError(f"{path}: invalid JSON at line {exc.lineno}: {exc.msg}") from exc
 
 
+def _read_text(path: Path) -> str:
+    """Read a file, turning OS-level failures into the CLI's clean usage-error contract."""
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ValidationError(f"{path}: cannot read file: {exc.strerror or exc}") from exc
+
+
 def load_jsonl(path: Path) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+    for line_no, line in enumerate(_read_text(path).splitlines(), start=1):
         if not line.strip():
             continue
         try:

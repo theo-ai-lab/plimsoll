@@ -24,6 +24,14 @@ class IoTests(unittest.TestCase):
         self.assertEqual(trace.tool_sequence, ["read_ticket", "search_docs", "summarize"])
         self.assertEqual(trace.total_duration_ms, 840)
 
+    def test_missing_policy_file_raises_a_validation_error_not_a_traceback(self) -> None:
+        missing = self.tmp / "no-such-policy.json"
+
+        with self.assertRaises(ValidationError) as ctx:
+            load_policy(missing)
+
+        self.assertIn("no-such-policy.json", str(ctx.exception))
+
     def test_policy_loads_sets(self) -> None:
         policy = load_policy(FIXTURES / "policies" / "default_policy.json")
 

@@ -144,6 +144,28 @@ class CliTests(unittest.TestCase):
         summary_line = buffer.getvalue().splitlines()[0]
         self.assertIn("findings: none", summary_line)
 
+    def test_missing_policy_file_is_a_clean_usage_error(self) -> None:
+        import contextlib
+        import io as string_io
+
+        buffer = string_io.StringIO()
+        with contextlib.redirect_stderr(buffer):
+            code = main(
+                [
+                    "run",
+                    "--input",
+                    "examples/traces/current_ticket_triage.json",
+                    "--policy",
+                    str(self.tmp / "no-such-policy.json"),
+                    "--out",
+                    str(self.tmp),
+                ]
+            )
+
+        self.assertEqual(code, 2)
+        self.assertIn("error:", buffer.getvalue())
+        self.assertIn("no-such-policy.json", buffer.getvalue())
+
     def test_json_summary_is_machine_readable(self) -> None:
         import contextlib
         import io as string_io
