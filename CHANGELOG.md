@@ -98,6 +98,9 @@ their dates record local development milestones, not public releases.
 
 - `pyproject.toml` declares an explicit `dependencies = []` so the zero-runtime-dependency
   contract is literal in the metadata.
+- The human summary line prints finding counts in plain English — `findings: 3 critical,
+  3 high, 3 medium` (or `findings: none`) — instead of a Python dict repr. The machine
+  contract is unchanged: `--json` and `report.json` still carry `severity_counts` as a map.
 
 ## [0.9.0] - 2026-05-31
 

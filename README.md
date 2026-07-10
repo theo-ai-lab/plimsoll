@@ -39,7 +39,7 @@ plimsoll run \
   --baseline examples/traces/baseline_ticket_triage.json \
   --policy examples/policies/default_policy.json \
   --out runs/sample
-# Plimsoll: 1/1 passed, avg score 100.0, findings {}
+# Plimsoll: 1/1 passed, avg score 100.0, findings: none
 ```
 
 Now check a regressed run. Plimsoll catches nine issues and exits `1`:
@@ -50,7 +50,7 @@ plimsoll run \
   --baseline examples/traces/baseline_ticket_triage.json \
   --policy examples/policies/default_policy.json \
   --out runs/regression
-# Plimsoll: 0/1 passed, avg score 0.0, findings {'high': 3, 'critical': 3, 'medium': 3}  -> exit 1
+# Plimsoll: 0/1 passed, avg score 0.0, findings: 3 critical, 3 high, 3 medium  -> exit 1
 ```
 
 Reports land in `runs/<name>/report.json` and `report.html`. (`python -m plimsoll ...` works identically to the `plimsoll` console script.)
@@ -277,7 +277,7 @@ Regenerate it with `python scripts/build_access_request_demo.py`. Read [`BEFORE_
 
 ```bash
 python -m pip install -e '.[dev]'      # adds ruff (the only dev dependency)
-python -m unittest discover -s tests   # 229 tests
+python -m unittest discover -s tests   # 231 tests
 ruff check .
 python scripts/validate_public_fixtures.py
 ```

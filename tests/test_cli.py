@@ -91,6 +91,59 @@ class CliTests(unittest.TestCase):
         report = json.loads((self.tmp / "report.json").read_text(encoding="utf-8"))
         self.assertEqual(report["summary"]["failed"], 1)
 
+    def test_human_summary_formats_finding_counts_in_plain_english(self) -> None:
+        import contextlib
+        import io as string_io
+
+        buffer = string_io.StringIO()
+        with contextlib.redirect_stderr(buffer):
+            code = main(
+                [
+                    "run",
+                    "--input",
+                    "examples/traces/regressed_ticket_triage.json",
+                    "--baseline",
+                    "examples/traces/baseline_ticket_triage.json",
+                    "--policy",
+                    "examples/policies/default_policy.json",
+                    "--out",
+                    str(self.tmp),
+                    "--color",
+                    "never",
+                ]
+            )
+
+        self.assertEqual(code, 1)
+        summary_line = buffer.getvalue().splitlines()[0]
+        self.assertIn("findings: 3 critical, 3 high, 3 medium", summary_line)
+        self.assertNotIn("{", summary_line, "severity counts must not print as a Python dict repr")
+
+    def test_human_summary_says_none_when_clean(self) -> None:
+        import contextlib
+        import io as string_io
+
+        buffer = string_io.StringIO()
+        with contextlib.redirect_stderr(buffer):
+            code = main(
+                [
+                    "run",
+                    "--input",
+                    "examples/traces/current_ticket_triage.json",
+                    "--baseline",
+                    "examples/traces/baseline_ticket_triage.json",
+                    "--policy",
+                    "examples/policies/default_policy.json",
+                    "--out",
+                    str(self.tmp),
+                    "--color",
+                    "never",
+                ]
+            )
+
+        self.assertEqual(code, 0)
+        summary_line = buffer.getvalue().splitlines()[0]
+        self.assertIn("findings: none", summary_line)
+
     def test_json_summary_is_machine_readable(self) -> None:
         import contextlib
         import io as string_io

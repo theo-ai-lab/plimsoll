@@ -370,7 +370,8 @@ def _emit_summary(args: argparse.Namespace, summary: dict[str, object], passk=No
         return
     line = (
         f"Plimsoll: {summary['passed']}/{summary['cases']} passed, "
-        f"avg score {summary['average_score']}, findings {summary['severity_counts']}"
+        f"avg score {summary['average_score']}, "
+        f"findings: {_format_severity_counts(summary['severity_counts'])}"
     )
     if _use_color(args):
         color = "\033[32m" if not summary["failed"] else "\033[31m"
@@ -382,6 +383,20 @@ def _emit_summary(args: argparse.Namespace, summary: dict[str, object], passk=No
             color = "\033[31m" if passk.gate_failed else "\033[32m"
             passk_line = f"{color}{passk_line}\033[0m"
         print(passk_line, file=sys.stderr)
+
+
+# Fixed severity order for the human summary, worst first. Severities outside this
+# vocabulary (there are none today) would sort alphabetically after it.
+_SEVERITY_ORDER = ("critical", "high", "medium", "low")
+
+
+def _format_severity_counts(counts: dict[str, int]) -> str:
+    """Format severity counts for the human summary: '3 critical, 3 high' / 'none'."""
+    if not counts:
+        return "none"
+    ordered = [s for s in _SEVERITY_ORDER if s in counts]
+    ordered += sorted(s for s in counts if s not in _SEVERITY_ORDER)
+    return ", ".join(f"{counts[severity]} {severity}" for severity in ordered)
 
 
 def _use_color(args: argparse.Namespace) -> bool:
