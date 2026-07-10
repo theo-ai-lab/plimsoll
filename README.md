@@ -231,11 +231,14 @@ Adapters are import shims for local JSON, not collectors, exporters, or SDK comp
 
 ## Reports and CI integration
 
-A single run writes `report.json` and `report.html`; add flags for the rest:
+A single run writes `report.json` and `report.html`; add flags for the rest (shown here on the quickstart's regressed trace):
 
 ```bash
-plimsoll run --input traces/ --policy policy.json --baseline baseline/ \
-  --out plimsoll-out --junit --sarif --md
+plimsoll run \
+  --input examples/traces/regressed_ticket_triage.json \
+  --baseline examples/traces/baseline_ticket_triage.json \
+  --policy examples/policies/default_policy.json \
+  --out runs/all-formats --junit --sarif --md
 ```
 
 - **HTML:** a self-contained, dark-mode-aware report with a verdict banner, a finding summary, and a trajectory diff. Status is encoded with an icon, a label, *and* color (never color alone).
