@@ -168,30 +168,33 @@ scripted agent loop and verifies every decision against a ground-truth label.
 
 Stochastic agents are flaky — a task that passes once may fail on the next run. `pass^k` is the **tau-Bench reliability view**: record the *same* task `k` times and ask how often the agent gets it right *every* time, not just once. It is the fraction of tasks for which **all `k` recorded runs pass** (per-task estimator `C(c, k) / C(n, k)`; `pass^1 = pass@1` is the ordinary per-run rate, `pass^n` asks "did every recorded run pass?"). It is computed **deterministically and offline** — Plimsoll only counts the per-run verdicts it already produces (a run passes when it has no critical/high finding), grouped by `case_id`. No re-evaluation, no LLM, no tokens.
 
-It is report-only by default and becomes a **CI gate** the moment you set `--passk-threshold`:
+It is report-only by default and becomes a **CI gate** the moment you set `--passk-threshold`. This runs it on the committed **stable** fixture — three recorded runs of the same task, all passing:
 
 ```bash
-plimsoll run --input runs/ --policy policy.json --out out --passk-threshold 0.9
-# Plimsoll reliability: pass@1=1.000 pass^1=1.000 over 1 task(s) x up to 1 run(s) [gate >= 0.900: PASS]
+plimsoll run --input examples/reliability/stable --policy examples/reliability/policy.json \
+  --out runs/reliability --passk-threshold 0.9
+# Plimsoll: 3/3 passed, avg score 100.0, findings: none
+# Plimsoll reliability: pass@1=1.000 pass^3=1.000 over 1 task(s) x up to 3 run(s) [gate >= 0.900: PASS] | p=1.000 [0.439,1.000] pass^3 band [0.084,1.000]
 ```
 
-Point `--input` at multiple recorded runs of the same task (a directory or `.jsonl`, grouped by `case_id`) to get `k > 1`; below the threshold the gate fails the build (exit `1`). The `reliability` block (the full `pass^j` curve, per-task results, and gate verdict) is written into `report.json` and carried through the HTML/JUnit/SARIF/Markdown outputs.
-
-A committed, runnable example lives in [`examples/reliability/`](examples/reliability/) — a **stable** fixture (three runs of one task, all pass → `pass^3 = 1.0`, gate passes) and a **flaky** one (a run bypasses a required approval → `pass^3 = 0.0`, gate fails). The project's own CI runs both as a self-test, and [`examples/ci/github-actions.yml`](examples/ci/github-actions.yml) documents the `--passk-threshold` step.
+`--input` takes any directory or `.jsonl` of recorded runs, grouped into tasks by `case_id`; below the threshold the gate fails the build (exit `1`). The **flaky** sibling fixture in [`examples/reliability/`](examples/reliability/) shows that: one of its runs bypasses a required approval, so `pass^3 = 0.0` and the gate fails. The project's own CI runs both fixtures as a self-test, and [`examples/ci/github-actions.yml`](examples/ci/github-actions.yml) documents the step. The `reliability` block (the full `pass^j` curve, per-task results, and gate verdict) is written into `report.json` and carried through the HTML/JUnit/SARIF/Markdown outputs.
 
 ### Reliability decay curve and the worst-case SLA gate
 
 A point estimate hides its own uncertainty: a lucky `2/2` run reports `pass^2 = 1.0`, which would certify an agent on two data points. `--reliability-sla` is the honest version of that gate — it wraps the observed per-run pass rate in a calibrated confidence band (a Wilson score interval), projects the band across repeated runs, and fails the build unless even the **worst case consistent with the observed runs** clears your SLA (rule `reliability_sla`, independent of the `reliability_pass_k` floor above).
 
 ```bash
-plimsoll run --input runs/ --policy policy.json --out out --reliability-sla 0.9 --reliability-confidence 0.95
+plimsoll run --input examples/reliability/stable --policy examples/reliability/policy.json \
+  --out runs/reliability-sla --reliability-sla 0.9 --reliability-confidence 0.95
+# Plimsoll: 3/3 passed, avg score 100.0, findings: none
+# Plimsoll reliability: pass@1=1.000 pass^3=1.000 over 1 task(s) x up to 3 run(s) | p=1.000 [0.439,1.000] pass^3 band [0.084,1.000] SLA 0.900: k*=0 MOP=1 [CI gate: FAIL]
 ```
 
-The summary and reports show the projected reliability curve, the deepest run count that still clears the SLA, and the first run count where it breaks. The honest caveat: with only a handful of recorded runs the band is wide, so even a perfect small sample will not certify a high SLA — that is the gate working, and recording more runs is the only way to narrow it. The statistics behind the curve (why Wilson, what each headline segment means, what the curve deliberately does not extrapolate) are worked through in [`docs/RELIABILITY.md`](docs/RELIABILITY.md).
+Three perfect runs still fail a 0.90 SLA — deliberately. With only a handful of recorded runs the band is wide (the worst per-run rate consistent with three passes is `0.439`), so a perfect small sample cannot certify a high SLA; that is the gate working, and recording more runs is the only way to narrow it. The summary shows the projected reliability curve, the deepest run count that still clears the SLA (`k*`), and the first run count where it breaks. The statistics behind the curve (why Wilson, what each headline segment means, what the curve deliberately does not extrapolate) are worked through in [`docs/RELIABILITY.md`](docs/RELIABILITY.md).
 
 ### Cheap → expensive cascade telemetry (the deterministic floor)
 
-Plimsoll is the cheap, deterministic layer in front of expensive model-based evaluation, and `--cascade` measures how much work that layer resolves. Its one real cheap → expensive boundary is internal: the pre-execution **gate** (the rules decidable before a call runs) versus the full post-hoc **audit** (every rule over the complete trace). `--cascade` replays that boundary — **zero model spend** — and emits, per boundary, `alpha` (fraction the cheap tier resolves before execution), `disagreementRate` (where the two tiers' verdicts differ), and `losslessViolations` (times the cheap fast path produced a verdict the audit would reverse — zero by construction, since the gate enforces a strict subset of the audit's rules).
+Plimsoll is the cheap, deterministic layer in front of expensive model-based evaluation, and `--cascade` measures how much work that layer resolves. Its one real cheap → expensive boundary is internal — the pre-execution **gate** versus the full post-hoc **audit** — and `--cascade` replays it with **zero model spend**, reporting how many traces the gate settled before execution, how often the two tiers disagreed, and whether the fast path ever reached a verdict the audit would reverse. The metric definitions (`alpha`, `disagreementRate`, `losslessViolations`) live in [`docs/RELIABILITY.md`](docs/RELIABILITY.md#cascade-telemetry-metrics).
 
 > **Measured** over the committed access-request corpus (`examples/access-request/traces`, 3 traces): Plimsoll's deterministic gate tier resolves **33% (1/3)** of traces before they execute at **0 lossless violations** and **0% disagreement** against the full audit.
 

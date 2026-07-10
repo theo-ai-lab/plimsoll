@@ -112,6 +112,23 @@ extrapolation over gold-set *size*, and it reports no positive asymptote — for
 `p < 1` the all-`k`-pass probability goes to 0, and the report says so
 (`asymptote: 0.0` with an explanatory note in `report.json`) instead of inventing a floor.
 
+## Cascade telemetry metrics
+
+`--cascade` replays Plimsoll's one real cheap → expensive boundary — the pre-execution
+**gate** (the rules decidable before a call runs) versus the full post-hoc **audit** (every
+rule over the complete trace) — and writes one block per boundary into `report.json`:
+
+- **`alpha`** — the fraction of traces the cheap tier resolves before execution: how much
+  work never has to reach the expensive tier.
+- **`disagreementRate`** — the fraction of traces where the two tiers' verdicts differ.
+- **`losslessViolations`** — the number of times the cheap fast path produced a verdict the
+  audit would reverse. For the gate/audit boundary this is zero **by construction**: the
+  gate enforces a strict subset of the audit's rules, so a gate block is always also an
+  audit failure.
+
+The replay re-evaluates recorded traces against both tiers deterministically and offline,
+so measuring the cascade costs zero model spend.
+
 ## Where this sits among Plimsoll's gates
 
 Every other Plimsoll gate is a provable predicate over the recorded trace — set
