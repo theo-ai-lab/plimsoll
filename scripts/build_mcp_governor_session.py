@@ -235,18 +235,27 @@ def run_session(command: list[str], client_messages: list[dict[str, Any]]) -> li
     return records
 
 
-def gate_responses(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """The ``tools/call`` responses, in order, paired to requests by JSON-RPC id."""
+def gate_exchanges(records: list[dict[str, Any]]) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    """The recorded ``tools/call`` (request, response) pairs, matched by JSON-RPC id.
+
+    The single id-pairing implementation: the replay tests import this too, so the builder
+    and the suite cannot diverge in how requests are matched to responses.
+    """
     requests = {
         record["message"]["id"]: record["message"]
         for record in records
         if record["direction"] == "client->server" and record["message"].get("method") == "tools/call"
     }
     return [
-        record["message"]
+        (requests[record["message"]["id"]], record["message"])
         for record in records
         if record["direction"] == "server->client" and record["message"].get("id") in requests
     ]
+
+
+def gate_responses(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The ``tools/call`` responses, in order, paired to requests by JSON-RPC id."""
+    return [response for _, response in gate_exchanges(records)]
 
 
 def verify(records: list[dict[str, Any]], session: list[GateCall]) -> list[str]:

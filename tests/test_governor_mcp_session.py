@@ -44,6 +44,11 @@ def _load_script():
     return module
 
 
+# The builder script owns the one id-pairing implementation; replaying through the same
+# helper means the tests cannot diverge from how the transcript was actually captured.
+_SCRIPT = _load_script()
+
+
 def _load_transcript() -> list[dict]:
     lines = TRANSCRIPT_PATH.read_text(encoding="utf-8").splitlines()
     return [json.loads(line) for line in lines if line]
@@ -51,16 +56,7 @@ def _load_transcript() -> list[dict]:
 
 def _gate_exchanges(records: list[dict]) -> list[tuple[dict, dict]]:
     """The recorded (request, response) pairs for ``tools/call``, matched by JSON-RPC id."""
-    requests = {
-        record["message"]["id"]: record["message"]
-        for record in records
-        if record["direction"] == "client->server" and record["message"].get("method") == "tools/call"
-    }
-    return [
-        (requests[record["message"]["id"]], record["message"])
-        for record in records
-        if record["direction"] == "server->client" and record["message"].get("id") in requests
-    ]
+    return _SCRIPT.gate_exchanges(records)
 
 
 class McpGovernorTranscriptTests(unittest.TestCase):
@@ -114,7 +110,7 @@ class McpGovernorStdioReplayTests(unittest.TestCase):
     def test_replaying_the_committed_session_against_a_real_server_matches(self) -> None:
         # End-to-end: send the committed client messages to a fresh real stdio server
         # subprocess and require the same three verdicts on the wire.
-        script = _load_script()
+        script = _SCRIPT
         records = _load_transcript()
         client_messages = [record["message"] for record in records if record["direction"] == "client->server"]
         replayed = script.run_session(script.default_server_command(POLICY_PATH), client_messages)
