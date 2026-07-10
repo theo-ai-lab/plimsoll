@@ -24,12 +24,15 @@ You changed a prompt, a model, or some tool wiring. Your unit tests still pass, 
 
 ## Quickstart
 
-Requires Python 3.11+. No runtime dependencies.
+Requires Python 3.11+. No runtime dependencies. The quickstart reads example traces committed in this repo, so start from a clone:
 
 ```bash
-python -m pip install -e .        # or: pip install plimsoll (once published)
+git clone https://github.com/theo-ai-lab/plimsoll && cd plimsoll
+python -m pip install -e .
 plimsoll --version
 ```
+
+Inside a clone no install is needed at all — `python -m plimsoll` behaves identically to the `plimsoll` script. To install without cloning, `python -m pip install git+https://github.com/theo-ai-lab/plimsoll` works today; `pip install plimsoll` is pending the PyPI publish.
 
 Check a clean run against a baseline (exits `0`):
 
@@ -53,7 +56,7 @@ plimsoll run \
 # Plimsoll: 0/1 passed, avg score 0.0, findings: 3 critical, 3 high, 3 medium  -> exit 1
 ```
 
-Reports land in `runs/<name>/report.json` and `report.html`. (`python -m plimsoll ...` works identically to the `plimsoll` console script.)
+Reports land in `runs/<name>/report.json` and `report.html`.
 
 ## What it checks
 
