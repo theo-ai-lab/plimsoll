@@ -1,10 +1,11 @@
 import json
+import os
 import shutil
 import tempfile
 import unittest
 from pathlib import Path
 
-from plimsoll.io import load_policy, load_trace
+from plimsoll.io import load_policy, load_trace, load_traces
 from plimsoll.models import ValidationError
 
 FIXTURES = Path("examples")
@@ -31,6 +32,26 @@ class IoTests(unittest.TestCase):
             load_policy(missing)
 
         self.assertIn("no-such-policy.json", str(ctx.exception))
+
+    def test_unreadable_trace_directory_raises_a_validation_error_not_a_traceback(self) -> None:
+        # Every directory loader (native, OTel, adapters) must report an unlistable
+        # directory the same way _read_text reports an unreadable file.
+        if os.name != "posix" or os.geteuid() == 0:
+            self.skipTest("needs POSIX permissions enforced for a non-root user")
+        from plimsoll.adapters import load_adapter_traces
+        from plimsoll.otel import load_otel_traces
+
+        locked = self.tmp / "locked"
+        locked.mkdir()
+        (locked / "trace.json").write_text("{}", encoding="utf-8")
+        locked.chmod(0o000)
+        self.addCleanup(locked.chmod, 0o755)
+
+        for loader in (load_traces, load_otel_traces, lambda path: load_adapter_traces(path, "langgraph")):
+            with self.subTest(loader=getattr(loader, "__name__", "load_adapter_traces")):
+                with self.assertRaises(ValidationError) as ctx:
+                    loader(locked)
+                self.assertIn("cannot read directory", str(ctx.exception))
 
     def test_policy_loads_sets(self) -> None:
         policy = load_policy(FIXTURES / "policies" / "default_policy.json")

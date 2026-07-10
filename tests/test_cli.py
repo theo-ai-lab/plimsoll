@@ -166,6 +166,36 @@ class CliTests(unittest.TestCase):
         self.assertIn("error:", buffer.getvalue())
         self.assertIn("no-such-policy.json", buffer.getvalue())
 
+    def test_unreadable_input_directory_is_a_clean_usage_error(self) -> None:
+        import contextlib
+        import io as string_io
+        import os
+
+        if os.name != "posix" or os.geteuid() == 0:
+            self.skipTest("needs POSIX permissions enforced for a non-root user")
+        locked = self.tmp / "locked"
+        locked.mkdir()
+        locked.chmod(0o000)
+        self.addCleanup(locked.chmod, 0o755)
+
+        buffer = string_io.StringIO()
+        with contextlib.redirect_stderr(buffer):
+            code = main(
+                [
+                    "run",
+                    "--input",
+                    str(locked),
+                    "--policy",
+                    "examples/policies/default_policy.json",
+                    "--out",
+                    str(self.tmp / "out"),
+                ]
+            )
+
+        self.assertEqual(code, 2)
+        self.assertIn("error:", buffer.getvalue())
+        self.assertIn("cannot read directory", buffer.getvalue())
+
     def test_json_summary_is_machine_readable(self) -> None:
         import contextlib
         import io as string_io

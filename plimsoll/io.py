@@ -23,6 +23,18 @@ def _read_text(path: Path) -> str:
         raise ValidationError(f"{path}: cannot read file: {exc.strerror or exc}") from exc
 
 
+def iter_dir(path: Path) -> list[Path]:
+    """List a directory sorted, with the same clean usage-error contract as ``_read_text``.
+
+    Every directory-of-traces loader (native, OTel, adapters) goes through this, so an
+    unlistable directory reports as a usage error instead of an unhandled traceback.
+    """
+    try:
+        return sorted(path.iterdir())
+    except OSError as exc:
+        raise ValidationError(f"{path}: cannot read directory: {exc.strerror or exc}") from exc
+
+
 def load_jsonl(path: Path) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for line_no, line in enumerate(_read_text(path).splitlines(), start=1):
@@ -49,7 +61,7 @@ def load_traces(path: Path) -> list[TraceRun]:
     if not path.is_dir():
         raise ValidationError(f"{path}: expected a trace file or directory")
     traces: list[TraceRun] = []
-    for item in sorted(path.iterdir()):
+    for item in iter_dir(path):
         if item.suffix in {".json", ".jsonl"}:
             traces.append(load_trace(item))
     if not traces:

@@ -112,9 +112,9 @@ PyPI. Update the date if needed and remove this notice when the tag is cut._
 
 ### Fixed
 
-- An unreadable trace, policy, `--call`, `--plan`, or `--partial-trace` path (missing file,
-  permission error) now exits `2` with a clean `error:` line instead of an unhandled
-  traceback, matching the documented exit-code contract.
+- An unreadable trace, policy, `--call`, `--plan`, or `--partial-trace` path — a file or a
+  directory of traces, missing or permission-denied — now exits `2` with a clean `error:`
+  line instead of an unhandled traceback, matching the documented exit-code contract.
 
 ## [0.9.0] - 2026-05-31
 

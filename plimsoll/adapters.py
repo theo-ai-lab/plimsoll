@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from plimsoll.io import load_json
+from plimsoll.io import iter_dir, load_json
 from plimsoll.models import Span, TraceRun, ValidationError
 from plimsoll.otel import load_otel_trace
 
@@ -14,7 +14,7 @@ def load_adapter_traces(path: Path, trace_format: str) -> list[TraceRun]:
         return [load_adapter_trace(path, trace_format)]
     if not path.is_dir():
         raise ValidationError(f"{path}: expected a trace file or directory")
-    traces = [load_adapter_trace(item, trace_format) for item in sorted(path.iterdir()) if item.suffix == ".json"]
+    traces = [load_adapter_trace(item, trace_format) for item in iter_dir(path) if item.suffix == ".json"]
     if not traces:
         raise ValidationError(f"{path}: no .json traces found")
     return traces

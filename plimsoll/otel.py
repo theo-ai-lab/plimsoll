@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from plimsoll.io import load_json
+from plimsoll.io import iter_dir, load_json
 from plimsoll.models import Span, TraceRun, ValidationError
 
 
@@ -47,7 +47,7 @@ def load_otel_traces(path: Path) -> list[TraceRun]:
         return [load_otel_trace(path)]
     if not path.is_dir():
         raise ValidationError(f"{path}: expected an OpenTelemetry JSON file or directory")
-    traces = [load_otel_trace(item) for item in sorted(path.iterdir()) if item.suffix == ".json"]
+    traces = [load_otel_trace(item) for item in iter_dir(path) if item.suffix == ".json"]
     if not traces:
         raise ValidationError(f"{path}: no .json OpenTelemetry traces found")
     return traces
