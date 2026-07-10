@@ -125,15 +125,18 @@ when a rule blocks it:
 
 ```bash
 # Forbidden tool: blocked outright (exit 1).
-echo '{"tool": "delete_database"}' | plimsoll governor --policy policy.json
-# Plimsoll governor: block 'delete_database'
-#   - forbidden_tool [critical]: Trace used forbidden tools.
+echo '{"tool": "deploy"}' | plimsoll governor --policy examples/policies/default_policy.json
+# Plimsoll governor: block 'deploy'
+#   - tool_allowlist [critical]: 'deploy' is not in the allowlist.
+#   - forbidden_tool [critical]: 'deploy' is forbidden by policy.
 
-# Ordering: grant_access proposed after only a search has run, with no manager_review yet.
-echo '["search"]' > prior.json
-echo '{"tool": "grant_access"}' | plimsoll governor --policy policy.json --partial-trace prior.json
+# Ordering: the task's goal action, proposed before its required approvals have run.
+echo '["read_record"]' > runs/prior.json
+echo '{"tool": "grant_access"}' | plimsoll governor \
+  --policy examples/mcp-governor-session/policy.json --partial-trace runs/prior.json
 # Plimsoll governor: block 'grant_access'
 #   - tool_order [critical]: 'grant_access' occurred before the required 'manager_review'.
+#   - tool_order [critical]: 'grant_access' occurred before the required 'security_review'.
 ```
 
 For a long-running integration, `plimsoll-governor` serves the same gate over MCP (stdio) as
@@ -141,8 +144,8 @@ two tools — `propose_tool_call` (the gate) and `check_trace` (the full audit) 
 or agent loop can consult it on every proposed tool call:
 
 ```bash
-pip install "plimsoll[mcp]"   # the mcp SDK is an optional extra; the core stays zero-dependency
-plimsoll-governor --policy policy.json
+python -m pip install -e '.[mcp]'   # the mcp SDK is an optional extra; the core stays zero-dependency
+plimsoll-governor --policy examples/mcp-governor-session/policy.json
 ```
 
 [docs/MCP_DEMO.md](docs/MCP_DEMO.md) has the host wiring (`.mcp.json`) and a committed,
@@ -276,7 +279,7 @@ Regenerate it with `python scripts/build_access_request_demo.py`. Read [`BEFORE_
 
 ```bash
 python -m pip install -e '.[dev]'      # adds ruff (the only dev dependency)
-python -m unittest discover -s tests   # 233 tests
+python -m unittest discover -s tests   # 237 tests
 ruff check .
 python scripts/validate_public_fixtures.py
 ```

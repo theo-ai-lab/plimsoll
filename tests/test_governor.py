@@ -114,6 +114,46 @@ class GovernorRepeatedActionTests(unittest.TestCase):
         self.assertTrue(governor.allows(partial, {"tool": "fetch", "input": {"url": "v"}}))
 
 
+class GovernorMessagePhrasingTests(unittest.TestCase):
+    """Gate messages name the proposed call, not the audit's finished-trace voice."""
+
+    def _only_message(self, policy: Policy, partial: list, proposed: object) -> str:
+        decision = Governor(policy).evaluate(partial, proposed)
+        self.assertFalse(decision.allowed)
+        (finding,) = decision.blocking_findings
+        return finding.message
+
+    def test_forbidden_and_allowlist_blocks_name_the_call(self) -> None:
+        message = self._only_message(Policy(forbidden_tools={"deploy"}), [], "deploy")
+        self.assertEqual(message, "'deploy' is forbidden by policy.")
+        message = self._only_message(Policy(allowed_tools={"search"}), [], "wire_transfer")
+        self.assertEqual(message, "'wire_transfer' is not in the allowlist.")
+
+    def test_budget_and_repeat_blocks_say_what_the_call_would_do(self) -> None:
+        message = self._only_message(
+            Policy(max_tokens=100), [{"tool": "search", "input_tokens": 60}], {"tool": "summarize", "input_tokens": 50}
+        )
+        self.assertEqual(message, "'summarize' would exceed the tokens budget.")
+        message = self._only_message(
+            Policy(max_repeated_action_count=1),
+            [{"tool": "fetch", "input": {"url": "u"}}],
+            {"tool": "fetch", "input": {"url": "u"}},
+        )
+        self.assertEqual(message, "'fetch' would repeat an identical action more than the policy allows.")
+
+    def test_rephrasing_keeps_rule_id_severity_and_evidence(self) -> None:
+        decision = Governor(Policy(forbidden_tools={"deploy"})).evaluate([], "deploy")
+        (finding,) = decision.blocking_findings
+        self.assertEqual(finding.rule_id, "forbidden_tool")
+        self.assertEqual(finding.severity, "critical")
+        self.assertEqual(finding.evidence["forbidden_tools"], ["deploy"])
+
+    def test_tool_order_message_already_names_the_call(self) -> None:
+        policy = Policy(must_precede=[("manager_review", "grant_access")])
+        message = self._only_message(policy, ["search"], "grant_access")
+        self.assertEqual(message, "'grant_access' occurred before the required 'manager_review'.")
+
+
 class GovernorCheckTraceTests(unittest.TestCase):
     def test_check_trace_delegates_to_the_full_rule_engine(self) -> None:
         governor = Governor(Policy(forbidden_tools={"delete_database"}))

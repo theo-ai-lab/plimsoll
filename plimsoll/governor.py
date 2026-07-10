@@ -28,7 +28,7 @@ want to stop it before it runs).
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -47,8 +47,32 @@ from plimsoll.rules import (
 # tool is legitimately absent mid-run — so it is not a gate rule.)
 _MEMBERSHIP_GATE_RULES = {"forbidden_tool", "tool_allowlist"}
 
+# The budget rules the gate evaluates cumulatively (partial trace + proposed call).
+_BUDGET_GATE_RULES = {"max_steps", "max_duration_ms", "max_tokens", "max_estimated_cost_usd"}
+
 # Keys that mark a fully-specified span (native/OTel shape) vs. a shorthand call dict.
 _FULL_SPAN_KEYS = {"span_id", "name", "kind", "status", "start_ms", "end_ms"}
+
+
+def _call_phrased(finding: Finding, tool: str) -> Finding:
+    """Rephrase an audit finding for the single call the gate is deciding.
+
+    ``rules.py`` speaks about a finished trace ("Trace used forbidden tools.") because
+    that is what the post-hoc audit sees. The gate is deciding one proposed call before
+    it runs, so its copy names that call instead. Only the message changes — the rule id,
+    severity, and evidence stay exactly what the rule engine produced. ``tool_order``
+    already names the proposed call, so it (and anything unrecognized) passes through.
+    """
+    if finding.rule_id == "tool_allowlist":
+        return replace(finding, message=f"'{tool}' is not in the allowlist.")
+    if finding.rule_id == "forbidden_tool":
+        return replace(finding, message=f"'{tool}' is forbidden by policy.")
+    if finding.rule_id in _BUDGET_GATE_RULES:
+        metric = finding.rule_id.removeprefix("max_")
+        return replace(finding, message=f"'{tool}' would exceed the {metric} budget.")
+    if finding.rule_id == "repeated_action":
+        return replace(finding, message=f"'{tool}' would repeat an identical action more than the policy allows.")
+    return finding
 
 
 @dataclass(frozen=True)
@@ -96,7 +120,9 @@ class Decision:
 
     ``allowed`` is True only when no gate rule fired. ``blocking_findings`` are real
     ``Finding`` objects produced by ``rules.py`` (same shape the CLI reports), so the
-    caller gets the exact rule, severity and evidence that blocked the call.
+    caller gets the exact rule, severity and evidence that blocked the call. Their
+    messages are phrased for the proposed call ("'deploy' is forbidden by policy.")
+    rather than the audit's finished-trace voice.
     """
 
     proposed_tool: str
@@ -263,6 +289,8 @@ class Governor:
             if proposed_signature in finding.evidence.get("repeated_actions", {}):
                 blocking.append(finding)
 
+        # The audit rules speak about a finished trace; the gate is deciding one call.
+        blocking = [_call_phrased(finding, proposed.tool) for finding in blocking]
         return Decision(proposed_tool=proposed.tool, blocking_findings=blocking)
 
     def allows(self, partial_trace: TraceRun | list[Any], proposed_call: Any) -> bool:

@@ -10,10 +10,11 @@ only the server wrapper needs the optional `mcp` SDK.
 
 ## Wire it into an agent host
 
-Install the optional extra (the core stays zero-dependency):
+Install the optional extra (the core stays zero-dependency). From a clone — the
+`pip install "plimsoll[mcp]"` form works once the PyPI publish lands:
 
 ```bash
-pip install "plimsoll[mcp]"
+python -m pip install -e '.[mcp]'
 ```
 
 For MCP hosts configured with a project-level `.mcp.json` (the common convention among
@@ -115,14 +116,14 @@ this call would take the cumulative total to 4160 — over the policy's 4000 cap
  "summary": "block: 'summarize' blocked by max_tokens",
  "blocking_findings": [
    {"rule_id": "max_tokens", "severity": "medium",
-    "message": "Trace exceeded tokens budget.",
+    "message": "'summarize' would exceed the tokens budget.",
     "evidence": {"actual": 4160, "limit": 4000}}]}
 ```
 
 ## Reproduce
 
 ```bash
-pip install "plimsoll[mcp]"
+python -m pip install -e '.[mcp]'
 python scripts/build_mcp_governor_session.py
 ```
 
