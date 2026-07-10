@@ -5,7 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+Versions prior to 0.9.0 were developed locally before this repository was published;
+their dates record local development milestones, not public releases.
+
 ## [Unreleased]
+
+## [1.0.0] - 2026-07-04
 
 ### Added
 
@@ -38,6 +43,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `examples/governor_loop_demo.py`: the governor firing as a live pre-execution gate over a
   scripted agent loop, cross-checking every decision against a ground-truth label so the
   "blocked N of M unsafe calls" headline is verified, not asserted.
+- **Recorded MCP governor session** (`examples/mcp-governor-session/`, `docs/MCP_DEMO.md`): a
+  committed JSON-RPC stdio transcript of the real `plimsoll-governor` server refusing tool
+  calls pre-execution — one allow, one `tool_order` deny of the task's own goal action, one
+  `max_tokens` budget block. Captured by a scripted deterministic client
+  (`scripts/build_mcp_governor_session.py`, stdlib-only, double-captures and byte-compares to
+  verify determinism; not a live-model session) and pinned to the engine by
+  `tests/test_governor_mcp_session.py`, which replays the transcript SDK-free on every run and
+  end-to-end against a real server subprocess when the `mcp` extra is installed.
+  `docs/MCP_DEMO.md` documents the `.mcp.json` host wiring and the three-outcome walkthrough;
+  `demo/mcp-governor.{tape,gif}` record the session run.
 - `pass^k` reliability aggregation over repeated recorded runs of the same `case_id`
   (`plimsoll/passk.py`): the tau-Bench reliability view (`pass^k` = fraction of tasks whose
   every recorded run passed), computed deterministically and offline from the per-run verdicts
@@ -178,7 +193,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Initial public release: a deterministic, dependency-free trace-regression CLI for AI
+- Initial release: a deterministic, dependency-free trace-regression CLI for AI
   agent execution traces.
 - Native trace input plus subset adapters for OpenTelemetry, OpenInference, LangGraph,
   and OpenAI Agents shaped local JSON.
