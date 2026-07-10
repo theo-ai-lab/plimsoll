@@ -31,10 +31,10 @@ agent CLIs), add:
 }
 ```
 
-or register it from a host CLI that manages MCP servers, for example:
+or, for a host CLI that manages MCP servers with an `mcp add` command, register it as:
 
 ```bash
-claude mcp add plimsoll-governor -- plimsoll-governor --policy policy.json
+<host-cli> mcp add plimsoll-governor -- plimsoll-governor --policy policy.json
 ```
 
 Notes:
