@@ -159,6 +159,26 @@ class SessionOwnsTheHistoryTests(unittest.TestCase):
                 self.assertEqual(finding.severity, "critical")
                 self.assertEqual(finding.evidence["authorized_tools"], ["manager_review", "security_review"])
 
+    def test_every_supported_history_shape_is_checked_the_same_way(self) -> None:
+        # A host may send its history as a list, a trace-shaped dict, or a TraceRun. All
+        # three are claims to check, and an unreadable one is a mismatch, not a pass.
+        governor = Governor.from_policy_file(ACCESS_POLICY_PATH)
+
+        def one_approval_in() -> Any:
+            session = governor.open_session()
+            session.propose(MANAGER)
+            return session
+
+        for shape in ("list", "dict", "trace"):
+            with self.subTest(shape=shape):
+                session = one_approval_in()
+                history = {"list": [MANAGER], "dict": {"spans": [MANAGER]}, "trace": session.trace()}[shape]
+                self.assertTrue(session.propose(SECURITY, client_history=history).allowed)
+        for history in ({}, "not a history", 7):
+            with self.subTest(unreadable=repr(history)):
+                verdict = one_approval_in().propose(SECURITY, client_history=history)
+                self.assertEqual(verdict.rule_ids, [SESSION_HISTORY_MISMATCH_RULE])
+
     def test_a_mismatched_history_is_refused_before_the_policy_rules_run(self) -> None:
         # Fail closed, not "block for whichever reason happens to apply": a forged history
         # must never be reconciled into a verdict, even when the call would be allowed.
