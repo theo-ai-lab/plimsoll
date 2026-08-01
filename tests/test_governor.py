@@ -205,6 +205,8 @@ class ProposedToolCallTests(unittest.TestCase):
                 "decision": "allow",
                 "allowed": True,
                 "proposed_tool": "t",
+                "policy_digest": "",
+                "session_id": None,
                 "summary": "allow: no governor rule blocked 't'",
                 "blocking_findings": [],
             },
@@ -243,14 +245,16 @@ class GovernorMcpSurfaceTests(unittest.TestCase):
     def setUp(self) -> None:
         policy = Policy(allowed_tools={"search", "grant_access", "manager_review"}, forbidden_tools={"delete_database"})
         self.tools = GovernorTools.from_policy(policy)
+        self.session_id = self.tools.open_session()["session_id"]
 
     def test_propose_tool_call_allow(self) -> None:
-        result = self.tools.propose_tool_call(["search"], "manager_review")
+        self.tools.propose_tool_call(self.session_id, "search")
+        result = self.tools.propose_tool_call(self.session_id, "manager_review")
         self.assertEqual(result["decision"], "allow")
         self.assertTrue(result["allowed"])
 
     def test_propose_tool_call_block_forbidden(self) -> None:
-        result = self.tools.propose_tool_call([], {"tool": "delete_database"})
+        result = self.tools.propose_tool_call(self.session_id, {"tool": "delete_database"})
         self.assertEqual(result["decision"], "block")
         rule_ids = {f["rule_id"] for f in result["blocking_findings"]}
         self.assertIn("forbidden_tool", rule_ids)
@@ -276,11 +280,13 @@ class GovernorMcpSurfaceTests(unittest.TestCase):
         self.assertGreaterEqual(result["finding_count"], 1)
         self.assertFalse(result["ok"])
 
-    def test_make_handlers_exposes_both_tools(self) -> None:
+    def test_make_handlers_exposes_the_session_gate_and_audit_tools(self) -> None:
         handlers = make_handlers(self.tools.governor)
-        self.assertEqual(set(handlers), {"propose_tool_call", "check_trace"})
+        self.assertEqual(set(handlers), {"open_session", "propose_tool_call", "check_trace"})
         self.assertTrue(callable(handlers["propose_tool_call"]))
-        self.assertEqual(handlers["propose_tool_call"]([], "search")["decision"], "allow")
+        # The handlers share one session registry: a session opened here is gateable here.
+        session_id = handlers["open_session"]()["session_id"]
+        self.assertEqual(handlers["propose_tool_call"](session_id, "search")["decision"], "allow")
 
 
 if __name__ == "__main__":

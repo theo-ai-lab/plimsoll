@@ -5,11 +5,15 @@ session captured against the real ``plimsoll-governor`` stdio server (see
 ``scripts/build_mcp_governor_session.py``). These tests replay the recorded gate calls, so a
 governor whose verdicts drift — or a stale transcript — fails the suite:
 
-* always (no ``mcp`` SDK needed): every recorded ``propose_tool_call``'s arguments are fed
-  through the same :class:`GovernorTools` surface the server wraps, and the resulting
-  decision must equal the recorded ``structuredContent`` exactly;
+* always (no ``mcp`` SDK needed): every recorded ``tools/call``'s arguments are fed through
+  the same SDK-free handlers the server wraps, in wire order, and each resulting decision
+  must equal the recorded ``structuredContent`` exactly;
 * when the optional ``mcp`` extra is installed: the recorded client messages are replayed
   against a fresh, real stdio server subprocess and the responses' verdicts must match.
+
+The session is also the security walkthrough: the server opens the session and keeps the
+record of what it allowed, and the recorded retry that supplies a forged history — one
+claiming the two approvals already ran — is refused on the wire.
 """
 
 import importlib.util
@@ -18,7 +22,10 @@ import sys
 import unittest
 from pathlib import Path
 
-from plimsoll.governor_mcp import GovernorTools
+from plimsoll.governor import Governor
+from plimsoll.governor_mcp import make_handlers
+from plimsoll.io import load_policy
+from plimsoll.policy import policy_digest
 
 ROOT = Path(__file__).resolve().parent.parent
 SESSION_DIR = ROOT / "examples" / "mcp-governor-session"
@@ -26,12 +33,20 @@ TRANSCRIPT_PATH = SESSION_DIR / "transcript.jsonl"
 POLICY_PATH = SESSION_DIR / "policy.json"
 SCRIPT_PATH = ROOT / "scripts" / "build_mcp_governor_session.py"
 
-# The three documented outcomes, in session order: (proposed tool, decision, rule_ids).
+# The documented outcomes, in session order: (proposed tool, decision, rule_ids).
 EXPECTED_OUTCOMES = [
+    ("search_tickets", "allow", []),
     ("read_record", "allow", []),
     ("grant_access", "block", ["tool_order", "tool_order"]),
+    ("grant_access", "block", ["session_history_mismatch"]),
+    ("manager_review", "allow", []),
+    ("security_review", "allow", []),
+    ("grant_access", "allow", []),
     ("summarize", "block", ["max_tokens"]),
 ]
+# Index in EXPECTED_OUTCOMES of the two calls the walkthrough turns on.
+DENIED_GOAL_ACTION = 2
+FORGED_HISTORY_RETRY = 3
 
 
 def _load_script():
@@ -64,8 +79,13 @@ class McpGovernorTranscriptTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.records = _load_transcript()
         cls.exchanges = _gate_exchanges(cls.records)
+        cls.responses = {
+            record["message"]["id"]: record["message"]
+            for record in cls.records
+            if record["direction"] == "server->client" and "id" in record["message"]
+        }
 
-    def test_transcript_records_the_three_documented_outcomes(self) -> None:
+    def test_transcript_records_the_documented_outcomes(self) -> None:
         self.assertEqual(len(self.exchanges), len(EXPECTED_OUTCOMES))
         for (request, response), (tool, decision, rules) in zip(self.exchanges, EXPECTED_OUTCOMES):
             self.assertEqual(request["params"]["name"], "propose_tool_call")
@@ -83,26 +103,64 @@ class McpGovernorTranscriptTests(unittest.TestCase):
         # allowlist and is the task's goal action — only the missing approvals block it.
         policy = json.loads(POLICY_PATH.read_text(encoding="utf-8"))
         self.assertIn("grant_access", policy["allowed_tools"])
-        _, response = self.exchanges[1]
+        _, response = self.exchanges[DENIED_GOAL_ACTION]
         findings = response["result"]["structuredContent"]["blocking_findings"]
         self.assertEqual({finding["evidence"]["before"] for finding in findings}, {"manager_review", "security_review"})
         self.assertTrue(all(finding["severity"] == "critical" for finding in findings))
 
+    def test_the_session_holds_the_history_and_a_forged_one_is_refused(self) -> None:
+        # The retry sends a partial_trace claiming both reviews ran. The server compares it
+        # with the record it kept and fails closed instead of taking the client's word.
+        request, response = self.exchanges[FORGED_HISTORY_RETRY]
+        claimed = [call["tool"] for call in request["params"]["arguments"]["partial_trace"]]
+        self.assertIn("manager_review", claimed)
+        self.assertIn("security_review", claimed)
+        (finding,) = response["result"]["structuredContent"]["blocking_findings"]
+        self.assertEqual(finding["rule_id"], "session_history_mismatch")
+        self.assertEqual(finding["severity"], "critical")
+        # The evidence contrasts what the governor authorized with what was claimed.
+        self.assertEqual(finding["evidence"]["authorized_tools"], ["search_tickets", "read_record"])
+        self.assertEqual(finding["evidence"]["supplied_tools"], claimed)
+        # Every other gate call rides the session alone — no history is supplied at all.
+        for index, (other, _) in enumerate(self.exchanges):
+            if index != FORGED_HISTORY_RETRY:
+                self.assertNotIn("partial_trace", other["params"]["arguments"])
+
+    def test_every_decision_binds_to_the_session_and_the_exact_policy(self) -> None:
+        _, opened = _SCRIPT.session_exchange(self.records)
+        handle = opened["result"]["structuredContent"]
+        # The digest is the SHA-256 of the effective served policy, recomputed here from
+        # the committed policy file, so the transcript cannot claim a policy it did not use.
+        expected = policy_digest(load_policy(POLICY_PATH))
+        self.assertEqual(handle["policy_digest"], expected)
+        for _, response in self.exchanges:
+            decision = response["result"]["structuredContent"]
+            self.assertEqual(decision["session_id"], handle["session_id"])
+            self.assertEqual(decision["policy_digest"], expected)
+
     def test_budget_block_evidence_shows_the_cumulative_overrun(self) -> None:
-        _, response = self.exchanges[2]
+        _, response = self.exchanges[-1]
         (finding,) = response["result"]["structuredContent"]["blocking_findings"]
         self.assertEqual(finding["rule_id"], "max_tokens")
         self.assertGreater(finding["evidence"]["actual"], finding["evidence"]["limit"])
 
     def test_recorded_arguments_reproduce_identical_decisions_without_the_sdk(self) -> None:
-        # Feed each recorded request through the same GovernorTools surface the server
-        # wraps: the live decision must equal the committed structuredContent exactly.
-        # This pins the demo to the engine with no optional dependency involved.
-        tools = GovernorTools.from_policy(policy_path=POLICY_PATH)
-        for request, response in self.exchanges:
-            arguments = request["params"]["arguments"]
-            decision = tools.propose_tool_call(arguments["partial_trace"], arguments["proposed_call"])
-            self.assertEqual(decision, response["result"]["structuredContent"])
+        # Replay every recorded tools/call through the same SDK-free handlers the server
+        # wraps, in wire order: each live decision must equal the committed
+        # structuredContent exactly. This pins the demo to the engine with no optional
+        # dependency involved — and only reproduces if the fresh governor assigns the same
+        # session handle, which is the determinism the transcript depends on.
+        handlers = make_handlers(Governor(load_policy(POLICY_PATH)))
+        replayed = 0
+        for record in self.records:
+            message = record["message"]
+            if record["direction"] != "client->server" or message.get("method") != "tools/call":
+                continue
+            params = message["params"]
+            result = handlers[params["name"]](**params["arguments"])
+            self.assertEqual(result, self.responses[message["id"]]["result"]["structuredContent"])
+            replayed += 1
+        self.assertEqual(replayed, len(EXPECTED_OUTCOMES) + 1)  # the gate calls plus open_session
 
 
 class McpGovernorStdioReplayTests(unittest.TestCase):

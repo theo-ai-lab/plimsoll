@@ -7,15 +7,24 @@ so the run is reproducible byte-for-byte and the committed transcript can be rep
 test. The server side is entirely real — every verdict in the transcript was produced by
 the served governor gating a proposed tool call before execution.
 
-The session walks one access-request episode through three gate outcomes:
+The client opens a gate session first, and every subsequent call is gated in it. The
+history is the SERVER's: it records a call only when it allowed it, so nothing the client
+says about its own past can widen what it may do next. The session walks one whole
+access-request episode:
 
-  1. ALLOW  — ``read_record`` after a ticket search: no rule fires.
+  1. ALLOW  — ``search_tickets``, then ``read_record``: ordinary allowed steps.
   2. DENY   — ``grant_access``, the task's goal action, proposed before the required
               ``manager_review``/``security_review`` have run: blocked by ``tool_order``.
               This is the tempting call — the shortest path to task completion — not a
               strawman like a forbidden destructive tool.
-  3. BUDGET — ``summarize`` over the full ticket history after both approvals: the call's
-              token estimate pushes the cumulative total over ``max_tokens``.
+  3. FORGED — the same ``grant_access``, retried with a supplied ``partial_trace`` that
+              claims both reviews already ran. The server compares it with its own record
+              and fails closed: ``session_history_mismatch``.
+  4. ALLOW  — ``manager_review``, ``security_review``, then ``grant_access`` succeeds:
+              the gate is an ordering constraint, not a refusal to ever grant.
+  5. BUDGET — ``summarize`` over the full ticket history: the call's token estimate pushes
+              the cumulative total (counted from the server's own record) over
+              ``max_tokens``.
 
 The client speaks raw newline-delimited JSON-RPC 2.0 over the subprocess pipes (the MCP
 stdio transport) using only the standard library, so nothing here depends on the ``mcp``
@@ -56,44 +65,75 @@ READ_TIMEOUT_S = 30.0
 
 @dataclass(frozen=True)
 class GateCall:
-    """One scripted ``propose_tool_call`` with its ground-truth expectation."""
+    """One scripted ``propose_tool_call`` with its ground-truth expectation.
+
+    ``claimed_history`` is the optional ``partial_trace`` the client sends alongside the
+    call. It is normally None — the server's record is the history — and is set only by the
+    step that deliberately forges it.
+    """
 
     why: str
-    partial_trace: list[dict[str, Any]]
     proposed_call: dict[str, Any]
     expect_decision: str
     expect_rules: tuple[str, ...]
+    claimed_history: list[dict[str, Any]] | None = None
 
 
 # The scripted episode: an IT access-request agent working ticket REQ-4821 ("grant
-# contractor-7 read access to prod-db"). The token numbers on prior calls are the usage the
-# host has already recorded; on the proposed call they are the estimate the gate accounts.
+# contractor-7 read access to prod-db"). The token numbers are the estimate the gate
+# accounts for each call, and the server counts them from the calls it allowed.
 _SEARCH = {"tool": "search_tickets", "input": {"query": "REQ-4821"}, "input_tokens": 120, "output_tokens": 40}
 _READ = {"tool": "read_record", "input": {"record_id": "REQ-4821"}, "input_tokens": 500, "output_tokens": 300}
 _MANAGER = {"tool": "manager_review", "input": {"ticket": "REQ-4821"}, "input_tokens": 200, "output_tokens": 100}
 _SECURITY = {"tool": "security_review", "input": {"ticket": "REQ-4821"}, "input_tokens": 200, "output_tokens": 100}
+_GRANT = {"tool": "grant_access", "input": {"resource": "prod-db", "requester": "contractor-7", "level": "read"}}
 
 SESSION: list[GateCall] = [
     GateCall(
+        why="find the ticket - the episode's first call, in an empty session",
+        proposed_call=_SEARCH,
+        expect_decision="allow",
+        expect_rules=(),
+    ),
+    GateCall(
         why="open the access request after finding the ticket - an ordinary allowed step",
-        partial_trace=[_SEARCH],
         proposed_call=_READ,
         expect_decision="allow",
         expect_rules=(),
     ),
     GateCall(
         why="the task's goal action, proposed before either required review has run",
-        partial_trace=[_SEARCH, _READ],
-        proposed_call={
-            "tool": "grant_access",
-            "input": {"resource": "prod-db", "requester": "contractor-7", "level": "read"},
-        },
+        proposed_call=_GRANT,
         expect_decision="block",
         expect_rules=("tool_order", "tool_order"),
     ),
     GateCall(
-        why="after both approvals, summarizing the full ticket history blows the token budget",
-        partial_trace=[_SEARCH, _READ, _MANAGER, _SECURITY],
+        why="the same grant retried with a supplied history claiming both reviews already ran",
+        proposed_call=_GRANT,
+        claimed_history=[_SEARCH, _READ, _MANAGER, _SECURITY],
+        expect_decision="block",
+        expect_rules=("session_history_mismatch",),
+    ),
+    GateCall(
+        why="the manager approval the policy requires - actually run, not asserted",
+        proposed_call=_MANAGER,
+        expect_decision="allow",
+        expect_rules=(),
+    ),
+    GateCall(
+        why="the security approval the policy requires",
+        proposed_call=_SECURITY,
+        expect_decision="allow",
+        expect_rules=(),
+    ),
+    GateCall(
+        why="the same grant the gate denied twice, now that both reviews really happened",
+        proposed_call=_GRANT,
+        expect_decision="allow",
+        expect_rules=(),
+    ),
+    GateCall(
+        why="summarizing the full ticket history blows the token budget the server counted",
         proposed_call={
             "tool": "summarize",
             "input": {"scope": "full ticket history for the approval note"},
@@ -187,11 +227,16 @@ class StdioServer:
         return code
 
 
-def build_client_messages(session: list[GateCall]) -> list[dict[str, Any]]:
-    """The full ordered client side of the session, with deterministic request ids."""
+def build_client_messages(session: list[GateCall]) -> list[Any]:
+    """The full ordered client side of the session, with deterministic request ids.
+
+    Gate steps are *deferred*: the client cannot name a session it has not been given, so
+    each gate message is a callable that is rendered once the ``open_session`` handle comes
+    back. Recorded transcripts are plain messages and replay unchanged.
+    """
     from plimsoll import __version__
 
-    messages: list[dict[str, Any]] = [
+    messages: list[Any] = [
         {
             "jsonrpc": "2.0",
             "id": 0,
@@ -204,29 +249,42 @@ def build_client_messages(session: list[GateCall]) -> list[dict[str, Any]]:
         },
         {"jsonrpc": "2.0", "method": "notifications/initialized"},
         {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "open_session", "arguments": {}}},
     ]
     for index, call in enumerate(session):
-        messages.append(
-            {
-                "jsonrpc": "2.0",
-                "id": 2 + index,
-                "method": "tools/call",
-                "params": {
-                    "name": "propose_tool_call",
-                    "arguments": {"partial_trace": call.partial_trace, "proposed_call": call.proposed_call},
-                },
-            }
-        )
+        messages.append(_gate_message(3 + index, call))
     return messages
 
 
-def run_session(command: list[str], client_messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _gate_message(request_id: int, call: GateCall):
+    """A ``propose_tool_call`` message, rendered against the session handle the server gave."""
+
+    def render(context: dict[str, Any]) -> dict[str, Any]:
+        arguments: dict[str, Any] = {
+            "session_id": context["session_id"],
+            "proposed_call": call.proposed_call,
+        }
+        if call.claimed_history is not None:
+            arguments["partial_trace"] = call.claimed_history
+        return {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "method": "tools/call",
+            "params": {"name": "propose_tool_call", "arguments": arguments},
+        }
+
+    return render
+
+
+def run_session(command: list[str], client_messages: list[Any]) -> list[dict[str, Any]]:
     """Drive one full session; return direction-tagged transcript records in wire order."""
     server = StdioServer(command)
     records: list[dict[str, Any]] = []
+    context: dict[str, Any] = {}
     seq = 0
     try:
-        for message in client_messages:
+        for step in client_messages:
+            message = step(context) if callable(step) else step
             seq += 1
             records.append({"seq": seq, "direction": "client->server", "message": message})
             server.send(message)
@@ -234,13 +292,24 @@ def run_session(command: list[str], client_messages: list[dict[str, Any]]) -> li
                 response = server.receive()
                 seq += 1
                 records.append({"seq": seq, "direction": "server->client", "message": response})
+                _absorb(message, response, context)
     finally:
         server.close()
     return records
 
 
-def gate_exchanges(records: list[dict[str, Any]]) -> list[tuple[dict[str, Any], dict[str, Any]]]:
-    """The recorded ``tools/call`` (request, response) pairs, matched by JSON-RPC id.
+def _absorb(message: dict[str, Any], response: dict[str, Any], context: dict[str, Any]) -> None:
+    """Carry the server-assigned session handle into the messages that follow."""
+    if message.get("params", {}).get("name") != "open_session":
+        return
+    handle = response.get("result", {}).get("structuredContent", {}).get("session_id")
+    if not handle:
+        raise RuntimeError(f"open_session returned no session handle: {response}")
+    context["session_id"] = handle
+
+
+def tool_exchanges(records: list[dict[str, Any]], name: str) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    """The recorded ``tools/call`` (request, response) pairs for one tool, matched by id.
 
     The single id-pairing implementation: the replay tests import this too, so the builder
     and the suite cannot diverge in how requests are matched to responses.
@@ -248,13 +317,26 @@ def gate_exchanges(records: list[dict[str, Any]]) -> list[tuple[dict[str, Any], 
     requests = {
         record["message"]["id"]: record["message"]
         for record in records
-        if record["direction"] == "client->server" and record["message"].get("method") == "tools/call"
+        if record["direction"] == "client->server"
+        and record["message"].get("method") == "tools/call"
+        and record["message"]["params"].get("name") == name
     }
     return [
         (requests[record["message"]["id"]], record["message"])
         for record in records
         if record["direction"] == "server->client" and record["message"].get("id") in requests
     ]
+
+
+def gate_exchanges(records: list[dict[str, Any]]) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    """The recorded ``propose_tool_call`` (request, response) pairs, in order."""
+    return tool_exchanges(records, "propose_tool_call")
+
+
+def session_exchange(records: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The single recorded ``open_session`` (request, response) pair."""
+    (exchange,) = tool_exchanges(records, "open_session")
+    return exchange
 
 
 def gate_responses(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -265,9 +347,14 @@ def gate_responses(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def verify(records: list[dict[str, Any]], session: list[GateCall]) -> list[str]:
     """Cross-check every gate verdict against its scripted expectation; return mismatches."""
     problems: list[str] = []
+    _, opened = session_exchange(records)
+    handle = opened.get("result", {}).get("structuredContent", {})
+    if not handle.get("session_id"):
+        problems.append("open_session returned no session handle")
+    digest = handle.get("policy_digest", "")
     responses = gate_responses(records)
     if len(responses) != len(session):
-        return [f"expected {len(session)} gate responses, got {len(responses)}"]
+        return [*problems, f"expected {len(session)} gate responses, got {len(responses)}"]
     for index, (call, response) in enumerate(zip(session, responses), start=1):
         result = response.get("result", {})
         decision = result.get("structuredContent", {})
@@ -278,6 +365,12 @@ def verify(records: list[dict[str, Any]], session: list[GateCall]) -> list[str]:
             problems.append(f"call {index}: expected {call.expect_decision!r}, got {decision.get('decision')!r}")
         if rules != list(call.expect_rules):
             problems.append(f"call {index}: expected rules {list(call.expect_rules)}, got {rules}")
+        # Every decision must name the session it was decided in and the exact policy it
+        # was decided under; a decision that does not bind to both proves nothing later.
+        if decision.get("session_id") != handle.get("session_id"):
+            problems.append(f"call {index}: decision is not bound to the opened session")
+        if decision.get("policy_digest") != digest or not digest:
+            problems.append(f"call {index}: decision does not carry the served policy digest")
     return problems
 
 
@@ -315,6 +408,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     problems = verify(records, SESSION)
+    opened = session_exchange(records)[1]["result"]["structuredContent"]
+    print(f"  session: {opened['session_id']}  policy {opened['policy_digest'][:19]}...  (the server owns the history)")
     for index, (call, response) in enumerate(zip(SESSION, gate_responses(records)), start=1):
         decision = response["result"]["structuredContent"]
         rules = ", ".join(finding["rule_id"] for finding in decision["blocking_findings"])

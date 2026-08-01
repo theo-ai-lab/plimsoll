@@ -126,7 +126,9 @@ third-party import.
 `plimsoll governor` is the one-shot CLI gate. It reads a proposed tool call as JSON (a
 tool-name string, or an object with a `tool` field plus optional `input`/token/cost hints) from
 `--call` or stdin, takes the calls that already ran via `--partial-trace`, and exits non-zero
-when a rule blocks it:
+when a rule blocks it. It is a one-shot evaluator: `--partial-trace` is a history *you*
+supply, which is right for a shell, a plan, or a recorded run — to gate a live agent, use
+the session-based MCP server below, where the governor keeps the history itself:
 
 ```bash
 # Forbidden tool: blocked outright (exit 1).
@@ -145,22 +147,37 @@ echo '{"tool": "grant_access"}' | plimsoll governor \
 ```
 
 For a long-running integration, `plimsoll-governor` serves the same gate over MCP (stdio) as
-two tools — `propose_tool_call` (the gate) and `check_trace` (the full audit) — so an MCP host
-or agent loop can consult it on every proposed tool call:
+three tools — `open_session`, `propose_tool_call` (the gate) and `check_trace` (the full
+audit) — so an MCP host or agent loop can consult it on every proposed tool call:
 
 ```bash
 python -m pip install -e '.[mcp]'   # the mcp SDK is an optional extra; the core stays zero-dependency
 plimsoll-governor --policy examples/mcp-governor-session/policy.json
 ```
 
+**The server keeps the history, not the agent.** A host opens a session and gates each call
+in it; the governor appends a call to its record only when it *allowed* it, and every
+ordering, budget and repetition verdict is computed from that record. A history the caller
+supplies is never used as the record — send one and it is cross-checked, and any
+disagreement blocks the call (`session_history_mismatch`); propose without a live session
+and the call is refused (`session_unknown`) rather than judged against an empty past. An
+agent cannot widen its own permissions by describing a past that did not happen. Every
+decision also echoes `policy_digest`, the SHA-256 of the effective policy text, so a
+recorded verdict binds to the exact policy that produced it.
+
+What that does *not* prove: the record is what the governor authorized. A gate cannot see
+whether the host really executed an authorized call — the post-hoc `check_trace` audit over
+the real trace is the tier that can. The two are complementary by design.
+
 [docs/MCP_DEMO.md](docs/MCP_DEMO.md) has the host wiring (`.mcp.json`) and a committed,
 replayable JSON-RPC session against the real server —
 [`examples/mcp-governor-session/`](examples/mcp-governor-session/) — showing an allow, a
-`tool_order` deny of the task's own goal action, and a `max_tokens` budget block, all
-decided before execution.
+`tool_order` deny of the task's own goal action, that same call retried with a forged
+history and refused, the approvals actually running so the grant succeeds, and a
+`max_tokens` budget block, all decided before execution.
 
 If you would rather not depend on the MCP SDK at all, `plimsoll.governor_mcp.make_handlers`
-exposes the same two tools as plain `{name: callable}` JSON-in/JSON-out functions.
+exposes the same three tools as plain `{name: callable}` JSON-in/JSON-out functions.
 [`examples/governor_loop_demo.py`](examples/governor_loop_demo.py) wires the gate into a
 scripted agent loop and verifies every decision against a ground-truth label.
 

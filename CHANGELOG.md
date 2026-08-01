@@ -29,12 +29,25 @@ PyPI. Update the date if needed and remove this notice when the tag is cut._
   `--call PATH` or stdin, takes the calls that already ran via `--partial-trace`, evaluates it
   against `--policy`, and prints the allow/block decision with the rule that fired. Exits `0` to
   allow, `1` to block, `2` on a usage error; `--json` emits the machine-readable `Decision`.
-- Optional MCP-style tool surface for the governor (`plimsoll/governor_mcp.py`): the gate
-  (`propose_tool_call`) and the full audit (`check_trace`) as plain JSON-in/JSON-out
-  callables, with optional `mcp`-SDK server wiring. The `mcp` SDK is an optional extra; the
-  core engine never imports it.
+- **Governor-owned gate sessions** (`Governor.open_session` / `GovernorSession`): at runtime the
+  governor keeps the record of what has already run instead of taking it from the agent it is
+  gating. A session appends a call only when the gate *allowed* it, and every ordering, budget
+  and repetition verdict is computed from that record. A caller-supplied history is never used
+  as the record: send one and it is cross-checked, and any disagreement fails closed
+  (`session_history_mismatch`); propose without a live session and the call is refused
+  (`session_unknown`) rather than judged against an empty past. The stateless
+  `Governor.evaluate(partial_trace, proposed_call)` remains as the *offline* evaluator behind
+  the whole-plan dry-run, gate replay and cascade telemetry.
+- **Policy digest on every decision**: each `Decision` carries `policy_digest`, the SHA-256 of
+  the effective policy text (`plimsoll.policy.policy_digest`, canonical over every `Policy`
+  field), plus the `session_id` it was decided in — so a recorded verdict provably binds to the
+  exact policy content that produced it.
+- Optional MCP-style tool surface for the governor (`plimsoll/governor_mcp.py`): `open_session`,
+  the gate (`propose_tool_call(session_id, proposed_call, partial_trace=None)`) and the full
+  audit (`check_trace`) as plain JSON-in/JSON-out callables, with optional `mcp`-SDK server
+  wiring. The `mcp` SDK is an optional extra; the core engine never imports it.
 - **`plimsoll-governor` console script**: launches the governor as an MCP server (stdio) so an
-  MCP host can call `propose_tool_call`/`check_trace`. Requires the new optional `mcp` extra
+  MCP host can call `open_session`/`propose_tool_call`/`check_trace`. Requires the new optional `mcp` extra
   (`pip install "plimsoll[mcp]"`); the import stays lazy, so the zero-dependency core install is
   unaffected and the launcher exits with a clear install hint (no silent fallback) when the SDK
   is absent.
@@ -48,13 +61,15 @@ PyPI. Update the date if needed and remove this notice when the tag is cut._
   "blocked N of M unsafe calls" headline is verified, not asserted.
 - **Recorded MCP governor session** (`examples/mcp-governor-session/`, `docs/MCP_DEMO.md`): a
   committed JSON-RPC stdio transcript of the real `plimsoll-governor` server refusing tool
-  calls pre-execution — one allow, one `tool_order` deny of the task's own goal action, one
+  calls pre-execution — the session opened server-side, two allows, a `tool_order` deny of the
+  task's own goal action, that same call retried with a forged history and refused
+  (`session_history_mismatch`), the approvals actually running so the grant succeeds, and a
   `max_tokens` budget block. Captured by a scripted deterministic client
   (`scripts/build_mcp_governor_session.py`, stdlib-only, double-captures and byte-compares to
   verify determinism; not a live-model session) and pinned to the engine by
   `tests/test_governor_mcp_session.py`, which replays the transcript SDK-free on every run and
   end-to-end against a real server subprocess when the `mcp` extra is installed.
-  `docs/MCP_DEMO.md` documents the `.mcp.json` host wiring and the three-outcome walkthrough;
+  `docs/MCP_DEMO.md` documents the `.mcp.json` host wiring and the full walkthrough;
   `demo/mcp-governor.{tape,gif}` record the session run.
 - `pass^k` reliability aggregation over repeated recorded runs of the same `case_id`
   (`plimsoll/passk.py`): the tau-Bench reliability view (`pass^k` = fraction of tasks whose

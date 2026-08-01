@@ -24,16 +24,39 @@ Unlike the CLI's pass/fail — which only *fails* on critical/high findings — 
 deliberately preventive: it BLOCKS on any rule in its subset that fires for the proposed
 call, regardless of that rule's severity (an over-budget loop is "medium" but you still
 want to stop it before it runs).
+
+Who owns "what has already run"
+-------------------------------
+Every ordering and budget verdict is a function of the calls that came before. At runtime
+that record is kept by the governor itself, in a :class:`GovernorSession` opened through
+:meth:`Governor.open_session`: the session appends a call only when the gate ALLOWED it,
+and history a caller supplies is never used as the record — at most it is cross-checked
+against the governor's own, and a mismatch fails closed. An agent therefore cannot widen
+its own permissions by describing a past that did not happen.
+
+The stateless :meth:`Governor.evaluate` remains, but it is an *offline* evaluator: it
+answers "what would the gate say given this history?" and is used by the whole-plan
+dry-run, by gate replay over a finished trace, and by the cascade telemetry — contexts
+where the history comes from a plan or a recorded trace, not from the agent being gated.
+It is not the runtime front door.
+
+What the governor's record does and does not prove: it is the list of calls the governor
+AUTHORIZED, which is what the gate can know. It cannot observe whether the host actually
+executed an authorized call — that is what the post-hoc :meth:`Governor.check_trace` audit
+over the real trace is for. The two tiers together are the cascade; neither replaces the
+other.
 """
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
 from plimsoll.io import load_policy, parse_span
-from plimsoll.models import Finding, JsonObject, Policy, Span, TraceRun, ValidationError
+from plimsoll.models import Finding, JsonObject, Policy, Span, TraceRun, ValidationError, stable_repr
+from plimsoll.policy import policy_digest
 from plimsoll.rules import (
     check_budgets,
     check_repeated_actions,
@@ -41,6 +64,13 @@ from plimsoll.rules import (
     check_tool_policy,
     evaluate_trace,
 )
+
+# Gate-integrity findings. These are NOT policy rules — they never come from a policy file
+# and never appear in an audit report; they are how the runtime gate refuses a call whose
+# session context it cannot trust. Both fail closed.
+SESSION_UNKNOWN_RULE = "session_unknown"
+SESSION_HISTORY_MISMATCH_RULE = "session_history_mismatch"
+SESSION_RULES = frozenset({SESSION_UNKNOWN_RULE, SESSION_HISTORY_MISMATCH_RULE})
 
 # Rules from check_tool_policy that are a pure membership test on the proposed tool and
 # therefore decidable at the gate. (required_tool is a *completion* check — a required
@@ -131,10 +161,17 @@ class Decision:
     caller gets the exact rule, severity and evidence that blocked the call. Their
     messages are phrased for the proposed call ("'deploy' is forbidden by policy.")
     rather than the audit's finished-trace voice.
+
+    ``policy_digest`` is the SHA-256 of the effective policy text (see
+    ``policy.policy_digest``), so a decision binds to the exact policy content that
+    produced it; ``session_id`` names the governor-owned session it was decided in, or is
+    None for an offline evaluation that has no session.
     """
 
     proposed_tool: str
     blocking_findings: list[Finding] = field(default_factory=list)
+    policy_digest: str = ""
+    session_id: str | None = None
 
     @property
     def allowed(self) -> bool:
@@ -155,6 +192,8 @@ class Decision:
             "decision": "allow" if self.allowed else "block",
             "allowed": self.allowed,
             "proposed_tool": self.proposed_tool,
+            "policy_digest": self.policy_digest,
+            "session_id": self.session_id,
             "summary": self.summary,
             "blocking_findings": [
                 {
@@ -228,18 +267,61 @@ class PlanFeasibility:
 
 
 class Governor:
-    """Evaluate a partial trace + a proposed next tool call against a :class:`Policy`."""
+    """Evaluate a partial trace + a proposed next tool call against a :class:`Policy`.
+
+    For runtime gating, open a :class:`GovernorSession` (:meth:`open_session`) and propose
+    calls through it: the governor then owns the record of what it allowed. :meth:`evaluate`
+    is the offline evaluator over a history supplied by the caller — correct for plans and
+    recorded traces, never for gating the agent that authored the history.
+    """
 
     def __init__(self, policy: Policy) -> None:
         self.policy = policy
+        self.policy_digest = policy_digest(policy)
+        # Sessions this governor opened, by handle. The governor owns them; nothing a
+        # caller sends can add to or reorder a session's record.
+        self._sessions: dict[str, GovernorSession] = {}
+        self._session_counter = 0
+        # Gate decisions mutate session state, so serialize them: two proposals racing on
+        # one governor must not both be measured against the same pre-state.
+        self._lock = threading.RLock()
 
     @classmethod
     def from_policy_file(cls, path: str | Path) -> Governor:
         """Build a Governor from a policy JSON file (reuses ``io.load_policy``)."""
         return cls(load_policy(Path(path)))
 
+    def open_session(self, *, run_id: str = "session", case_id: str = "session") -> GovernorSession:
+        """Open a gate session whose call record this governor owns.
+
+        Handles are sequential and process-local (``session-1``, ``session-2``, …), which
+        keeps a served session reproducible byte-for-byte — Plimsoll is deterministic by
+        construction and a random handle would break that. A handle is a NAME, not a bearer
+        secret: isolation between agents is the transport's job (the stdio server the
+        ``plimsoll-governor`` console script runs is one process per client).
+        """
+        with self._lock:
+            self._session_counter += 1
+            session = GovernorSession(
+                self, session_id=f"session-{self._session_counter}", run_id=run_id, case_id=case_id
+            )
+            self._sessions[session.session_id] = session
+            return session
+
+    def session(self, session_id: Any) -> GovernorSession | None:
+        """The open session with this handle, or None. Anything unrecognized is None."""
+        if not isinstance(session_id, str):
+            return None
+        with self._lock:
+            return self._sessions.get(session_id)
+
     def evaluate(self, partial_trace: TraceRun | list[Any], proposed_call: Any) -> Decision:
         """Decide whether ``proposed_call`` may run, given the partial trace so far.
+
+        OFFLINE evaluator: the history comes from the caller. Use it for whole-plan
+        dry-runs, gate replay over a finished trace, and cascade telemetry. To gate a live
+        agent, use :meth:`open_session` — a history the gated agent supplies about itself
+        is not evidence.
 
         The proposed call is appended as a hypothetical span and the gate subset of
         ``rules.py`` is run over the result. Each finding is attributed to the proposed
@@ -299,7 +381,7 @@ class Governor:
 
         # The audit rules speak about a finished trace; the gate is deciding one call.
         blocking = [_call_phrased(finding, proposed.tool) for finding in blocking]
-        return Decision(proposed_tool=proposed.tool, blocking_findings=blocking)
+        return Decision(proposed_tool=proposed.tool, blocking_findings=blocking, policy_digest=self.policy_digest)
 
     def allows(self, partial_trace: TraceRun | list[Any], proposed_call: Any) -> bool:
         """Convenience boolean wrapper around :meth:`evaluate`."""
@@ -357,6 +439,130 @@ class Governor:
             expected_output=None,
             spans=spans,
         )
+
+
+class GovernorSession:
+    """A live gate session. The governor — not the caller — owns what has already run.
+
+    Open one with :meth:`Governor.open_session`, then gate every proposed call through
+    :meth:`propose`. A call is appended to the session's record only when the gate ALLOWED
+    it, so the ordering, budget and repetition rules are decided against authorizations
+    this governor issued, not against a history the gated agent narrated.
+
+    A caller MAY still send its own view of the history (``client_history``) — hosts often
+    keep one — but it is never used as the record. It is compared against the governor's,
+    and any disagreement fails closed with a ``session_history_mismatch`` block rather than
+    being reconciled: a gate that resolves a conflict in the caller's favour is the hole
+    this class exists to close.
+
+    Scope of the guarantee: the record is the list of calls the governor AUTHORIZED. A gate
+    cannot observe whether the host really executed one; the post-hoc
+    :meth:`Governor.check_trace` audit over the real trace is the tier that can.
+    """
+
+    def __init__(self, governor: Governor, *, session_id: str, run_id: str = "session", case_id: str = "session"):
+        self.governor = governor
+        self.session_id = session_id
+        self.run_id = run_id
+        self.case_id = case_id
+        self._authorized: list[ProposedToolCall] = []
+
+    @property
+    def authorized_calls(self) -> tuple[ProposedToolCall, ...]:
+        """The calls this governor allowed, in order. Read-only by construction."""
+        return tuple(self._authorized)
+
+    @property
+    def tool_sequence(self) -> list[str]:
+        return [call.tool for call in self._authorized]
+
+    def trace(self) -> TraceRun:
+        """The governor's own partial trace for this session."""
+        return Governor.build_partial_trace(list(self._authorized), run_id=self.run_id, case_id=self.case_id)
+
+    def propose(self, proposed_call: Any, *, client_history: Any = None) -> Decision:
+        """Gate one call against this session's governor-owned record.
+
+        Records the call only when the decision is allow. When ``client_history`` is not
+        None it must agree with the record — same tools, same inputs, same order — or the
+        call is blocked without ever reaching the policy rules.
+        """
+        proposed = ProposedToolCall.from_obj(proposed_call)
+        with self.governor._lock:
+            if client_history is not None:
+                mismatch = self._history_mismatch(proposed, client_history)
+                if mismatch is not None:
+                    return self._decision(proposed.tool, [mismatch])
+            decision = self.governor.evaluate(self.trace(), proposed)
+            if decision.allowed:
+                self._authorized.append(proposed)
+            return replace(decision, session_id=self.session_id)
+
+    def _decision(self, tool: str, findings: list[Finding]) -> Decision:
+        return Decision(
+            proposed_tool=tool,
+            blocking_findings=findings,
+            policy_digest=self.governor.policy_digest,
+            session_id=self.session_id,
+        )
+
+    def _history_mismatch(self, proposed: ProposedToolCall, client_history: Any) -> Finding | None:
+        """A ``session_history_mismatch`` finding when the supplied history is not ours."""
+        try:
+            supplied = [ProposedToolCall.from_obj(item) for item in _history_items(client_history)]
+        except (ValidationError, TypeError) as exc:
+            return self._mismatch_finding(proposed, f"the supplied history could not be read ({exc})", [])
+        supplied_signatures = [_call_signature(call) for call in supplied]
+        own_signatures = [_call_signature(call) for call in self._authorized]
+        if supplied_signatures == own_signatures:
+            return None
+        return self._mismatch_finding(proposed, "the supplied history is not what this session authorized", supplied)
+
+    def _mismatch_finding(self, proposed: ProposedToolCall, reason: str, supplied: list[ProposedToolCall]) -> Finding:
+        return Finding(
+            rule_id=SESSION_HISTORY_MISMATCH_RULE,
+            severity="critical",
+            case_id=self.case_id,
+            message=f"'{proposed.tool}' is blocked: {reason}.",
+            evidence={
+                "session_id": self.session_id,
+                "authorized_tools": self.tool_sequence,
+                "supplied_tools": [call.tool for call in supplied],
+                "reason": reason,
+            },
+        )
+
+
+def _history_items(client_history: Any) -> list[Any]:
+    """The ordered prior calls of a supplied history, in list or trace-shaped dict form."""
+    if isinstance(client_history, list):
+        return client_history
+    if isinstance(client_history, TraceRun):
+        return [_proposed_from_span(span) for span in client_history.spans if span.tool_name]
+    if isinstance(client_history, dict):
+        spans = client_history.get("spans")
+        if spans is None:
+            return []
+        if not isinstance(spans, list):
+            raise ValidationError("supplied history 'spans' must be a list")
+        return [
+            _proposed_from_span(parse_span(item, source="<client_history>", index=index))
+            if isinstance(item, dict) and _FULL_SPAN_KEYS <= set(item)
+            else item
+            for index, item in enumerate(spans)
+        ]
+    raise ValidationError(f"cannot read a supplied history from {type(client_history).__name__}")
+
+
+def _call_signature(call: ProposedToolCall) -> str:
+    """What must match between the governor's record and a supplied history.
+
+    Tool and input — the two things the ordering and repetition rules read. Cost hints are
+    deliberately excluded: a host reporting a call's *measured* usage where the gate
+    accounted an *estimate* is a normal disagreement, not an attempt to rewrite history,
+    and the budgets are counted from the governor's own numbers either way.
+    """
+    return f"{call.tool}:{stable_repr(call.input)}"
 
 
 def coerce_partial_trace(payload: Any) -> TraceRun:

@@ -1,10 +1,45 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from collections import Counter
+from dataclasses import fields
 from typing import Any
 
-from plimsoll.models import TraceRun
+from plimsoll.models import Policy, TraceRun
 from plimsoll.rules import trace_metrics
+
+DIGEST_PREFIX = "sha256:"
+
+
+def canonical_policy_text(policy: Policy) -> str:
+    """The one canonical text form of an *effective* policy, for hashing.
+
+    Two policies that constrain identically must produce the same text regardless of how
+    they were written: key order, whitespace, `$schema`, and the ordering of the tool sets
+    are all normalized away. Every field of :class:`~plimsoll.models.Policy` is emitted by
+    walking the dataclass, so a policy field added later is covered by the digest without
+    anyone remembering to update this function.
+    """
+    document: dict[str, Any] = {}
+    for policy_field in fields(Policy):
+        value = getattr(policy, policy_field.name)
+        if isinstance(value, (set, frozenset)):
+            value = sorted(value)
+        elif isinstance(value, list):
+            value = [list(item) if isinstance(item, tuple) else item for item in value]
+        document[policy_field.name] = value
+    return json.dumps(document, sort_keys=True, separators=(",", ":"))
+
+
+def policy_digest(policy: Policy) -> str:
+    """``sha256:<hex>`` over :func:`canonical_policy_text`.
+
+    Every gate decision carries this, so a recorded decision provably binds to the exact
+    policy content that produced it: change any constraint and the digest changes, making
+    a decision replayed under a different policy detectable rather than plausible.
+    """
+    return DIGEST_PREFIX + hashlib.sha256(canonical_policy_text(policy).encode("utf-8")).hexdigest()
 
 
 def infer_policy(traces: list[TraceRun]) -> dict[str, Any]:

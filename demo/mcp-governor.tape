@@ -7,15 +7,17 @@
 Output demo/mcp-governor.gif
 
 Set Shell "bash"
-Set FontSize 18
+Set FontSize 16
 Set Width 1200
-Set Height 480
+Set Height 540
 Set Theme "Dracula"
 Set Padding 18
 Set TypingSpeed 50ms
 
 # Drive the real plimsoll-governor stdio MCP server through the scripted deterministic
-# session: one allow, one deny (tool_order), one budget-exceeded (max_tokens).
+# session: the server opens the gate session and keeps the history, two allows, a deny
+# (tool_order) of the goal action, that same call retried with a forged history and refused
+# (session_history_mismatch), the real approvals, and a budget block (max_tokens).
 Type "python scripts/build_mcp_governor_session.py --out /tmp/mcp-governor-transcript.jsonl"
 Enter
-Sleep 6s
+Sleep 8s
