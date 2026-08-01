@@ -16,12 +16,17 @@ record of what it allowed, and the recorded retry that supplies a forged history
 claiming the two approvals already ran — is refused on the wire.
 """
 
+import contextlib
+import importlib
 import importlib.util
+import io
 import json
 import sys
+import types
 import unittest
 from pathlib import Path
 
+from plimsoll import governor_mcp
 from plimsoll.governor import Governor
 from plimsoll.governor_mcp import make_handlers
 from plimsoll.io import load_policy
@@ -163,11 +168,50 @@ class McpGovernorTranscriptTests(unittest.TestCase):
         self.assertEqual(replayed, len(EXPECTED_OUTCOMES) + 1)  # the gate calls plus open_session
 
 
+class OptionalSdkAvailabilityTests(unittest.TestCase):
+    """`_HAS_MCP` must mean "we can serve", not merely "something named mcp is installed".
+
+    The SDK's server layout is not stable across majors: the wiring `build_server` imports
+    (`mcp.server.fastmcp`) is absent from mcp 2.x. Detecting only the top-level package
+    turns that into a traceback out of the launcher instead of the documented install hint.
+    """
+
+    def test_availability_tracks_the_wiring_the_server_actually_imports(self) -> None:
+        expected = (
+            importlib.util.find_spec("mcp") is not None and importlib.util.find_spec("mcp.server.fastmcp") is not None
+        )
+        self.assertEqual(governor_mcp._HAS_MCP, expected)
+
+    def test_an_sdk_without_the_server_wiring_reports_an_install_hint_not_a_traceback(self) -> None:
+        # Simulate an installed SDK whose server wiring cannot be imported: `import mcp`
+        # succeeds, `from mcp.server.fastmcp import FastMCP` does not.
+        saved = {name: module for name, module in sys.modules.items() if name == "mcp" or name.startswith("mcp.")}
+        for name in saved:
+            del sys.modules[name]
+        sys.modules["mcp"] = types.ModuleType("mcp")
+        try:
+            module = importlib.reload(governor_mcp)
+            self.assertFalse(module._HAS_MCP)
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                code = module.main(["--policy", str(POLICY_PATH)])
+            self.assertEqual(code, 2)
+            self.assertIn("mcp", stderr.getvalue())
+            # The SDK-free surface still works with no SDK we can serve with.
+            handlers = module.make_handlers(Governor(load_policy(POLICY_PATH)))
+            session = handlers["open_session"]()["session_id"]
+            self.assertTrue(handlers["propose_tool_call"](session, "search_tickets")["allowed"])
+        finally:
+            del sys.modules["mcp"]
+            sys.modules.update(saved)
+            importlib.reload(governor_mcp)
+
+
 class McpGovernorStdioReplayTests(unittest.TestCase):
-    @unittest.skipUnless(importlib.util.find_spec("mcp") is not None, "requires the optional mcp extra")
+    @unittest.skipUnless(governor_mcp._HAS_MCP, "requires an optional mcp SDK the server can wire up")
     def test_replaying_the_committed_session_against_a_real_server_matches(self) -> None:
         # End-to-end: send the committed client messages to a fresh real stdio server
-        # subprocess and require the same three verdicts on the wire.
+        # subprocess and require the same verdicts on the wire.
         script = _SCRIPT
         records = _load_transcript()
         client_messages = [record["message"] for record in records if record["direction"] == "client->server"]

@@ -128,8 +128,13 @@ class GovernorMcpEntryPointTests(unittest.TestCase):
         with mock.patch("plimsoll.governor_mcp._HAS_MCP", False), contextlib.redirect_stderr(err):
             code = mcp_main([])
         self.assertEqual(code, 2)
-        self.assertIn("mcp", err.getvalue())
-        self.assertIn("not installed", err.getvalue())
+        message = err.getvalue()
+        self.assertIn("mcp", message)
+        # The hint must name the supported SDK range, not just "install mcp": the served
+        # wiring is the 1.x FastMCP API, so an unpinned install can land on one that
+        # cannot serve.
+        self.assertIn("pip install", message)
+        self.assertIn("mcp>=1.0,<2", message)
 
     def test_with_sdk_builds_server_and_runs(self) -> None:
         # Exercise main's wiring without the optional SDK: a fake build_server stands in for

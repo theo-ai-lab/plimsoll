@@ -21,11 +21,15 @@ Optional dependency
 -------------------
 The ``mcp`` SDK is OPTIONAL. If it is not installed, this module still works as plain
 callables — build them with :func:`make_handlers` or use :class:`GovernorTools` directly.
-The MCP server wiring (:func:`build_server`) is only available when ``mcp`` is importable.
+The MCP server wiring (:func:`build_server`) needs the 1.x ``mcp.server.fastmcp`` API,
+which the 2.x SDK removed, so the extra is pinned to the range this server can actually
+wire up:
 
-    pip install mcp
+    pip install 'mcp>=1.0,<2'
 
-Without it, ``_HAS_MCP`` is False and only the plain-callable surface is exposed.
+Without an SDK it can serve with, ``_HAS_MCP`` is False and only the plain-callable
+surface is exposed — including when a *newer* SDK is installed, so an unusable version
+reads as "cannot serve" instead of failing halfway through startup.
 
 This preserves Plimsoll's zero-dependency identity: the core engine never imports ``mcp``.
 """
@@ -42,11 +46,15 @@ from plimsoll.io import load_policy, parse_trace
 from plimsoll.models import Finding, JsonObject, Policy, TraceRun, ValidationError
 
 try:  # The MCP SDK is an optional extra; the engine works fine without it.
-    import mcp  # type: ignore  # noqa: F401
+    # Import the exact wiring build_server needs, not just the top-level package: the SDK's
+    # server layout is not stable across majors (mcp 2.x has no mcp.server.fastmcp), and an
+    # installed-but-unusable SDK must read as "cannot serve" rather than crash the launcher.
+    from mcp.server.fastmcp import FastMCP  # type: ignore  # noqa: F401
 
     _HAS_MCP = True
 except ImportError:  # pragma: no cover - exercised only where the optional extra is absent
-    # MCP SDK not installed. To serve these tools over MCP, run `pip install mcp`.
+    # No MCP SDK this server can wire up. To serve these tools over MCP, install the
+    # supported range: `pip install 'mcp>=1.0,<2'`.
     # The plain callables below remain fully functional without it.
     _HAS_MCP = False
 
@@ -153,11 +161,9 @@ def build_server(governor: Governor, name: str = "plimsoll-governor") -> Any:
     """
     if not _HAS_MCP:  # pragma: no cover - depends on the optional extra being absent
         raise RuntimeError(
-            "the 'mcp' SDK is not installed; run `pip install mcp` to serve the governor "
-            "over MCP, or use make_handlers() for the SDK-free callable surface"
+            "no MCP SDK this server can wire up; run `pip install 'mcp>=1.0,<2'` to serve "
+            "the governor over MCP, or use make_handlers() for the SDK-free callable surface"
         )
-    from mcp.server.fastmcp import FastMCP  # type: ignore  # imported lazily; optional extra
-
     server = FastMCP(name)
     tools = GovernorTools(governor)
 
@@ -209,9 +215,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if not _HAS_MCP:
         print(
-            "error: the 'mcp' SDK is not installed. Install the optional extra "
-            "(from a clone: `python -m pip install -e '.[mcp]'`, or `pip install mcp`) "
-            "to serve the governor over MCP. "
+            "error: no MCP SDK this server can wire up is installed. Install the optional "
+            "extra (from a clone: `python -m pip install -e '.[mcp]'`, or "
+            "`pip install 'mcp>=1.0,<2'`) to serve the governor over MCP. "
             "The SDK-free callable surface (make_handlers / GovernorTools) works without it.",
             file=sys.stderr,
         )

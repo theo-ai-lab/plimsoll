@@ -47,10 +47,12 @@ PyPI. Update the date if needed and remove this notice when the tag is cut._
   audit (`check_trace`) as plain JSON-in/JSON-out callables, with optional `mcp`-SDK server
   wiring. The `mcp` SDK is an optional extra; the core engine never imports it.
 - **`plimsoll-governor` console script**: launches the governor as an MCP server (stdio) so an
-  MCP host can call `open_session`/`propose_tool_call`/`check_trace`. Requires the new optional `mcp` extra
-  (`pip install "plimsoll[mcp]"`); the import stays lazy, so the zero-dependency core install is
-  unaffected and the launcher exits with a clear install hint (no silent fallback) when the SDK
-  is absent.
+  MCP host can call `open_session`/`propose_tool_call`/`check_trace`. Requires the new optional
+  `mcp` extra (`pip install "plimsoll[mcp]"`), pinned to `>=1.0,<2` because the served wiring is
+  the 1.x `mcp.server.fastmcp` API that 2.x removed. Availability is decided by importing that
+  wiring, not the top-level package, so an SDK the server cannot use reads as "cannot serve":
+  the launcher prints the install hint and exits `2` (no silent fallback, no traceback halfway
+  through startup). The import stays lazy, so the zero-dependency core install is unaffected.
 - **Armed `pass^k` CI gate** with committed multi-run fixtures (`examples/reliability/`): a
   stable directory (three runs of one `case_id`, all pass → `pass^3 = 1.0`) and a flaky one
   (one run bypasses the required approval → `pass^3 = 0.0`). The repo's own CI runs both as a
