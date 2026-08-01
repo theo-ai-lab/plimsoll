@@ -62,6 +62,14 @@ TRANSCRIPT_PATH = SESSION_DIR / "transcript.jsonl"
 PROTOCOL_VERSION = "2025-06-18"
 READ_TIMEOUT_S = 30.0
 
+# Printed with the session, so the demo GIF rendered from this output carries the limit
+# instead of leaving it to travel separately in the docs. The gate's record is a list of
+# AUTHORIZATIONS: it cannot distinguish a call the host executed from one that was
+# authorized and skipped, so an agent that proposes the two reviews and never runs them
+# reaches the goal action with no forged history at all. ``check_trace`` is the tier that
+# audits the real trace.
+RECORD_CAVEAT = "this record is what the gate AUTHORIZED, not what ran - check_trace audits the real trace"
+
 
 @dataclass(frozen=True)
 class GateCall:
@@ -115,7 +123,7 @@ SESSION: list[GateCall] = [
         expect_rules=("session_history_mismatch",),
     ),
     GateCall(
-        why="the manager approval the policy requires - actually run, not asserted",
+        why="the manager approval the policy requires - authorized by the gate, not claimed in a history",
         proposed_call=_MANAGER,
         expect_decision="allow",
         expect_rules=(),
@@ -127,7 +135,7 @@ SESSION: list[GateCall] = [
         expect_rules=(),
     ),
     GateCall(
-        why="the same grant the gate denied twice, now that both reviews really happened",
+        why="the same grant the gate denied twice, now that both reviews have been authorized",
         proposed_call=_GRANT,
         expect_decision="allow",
         expect_rules=(),
@@ -417,6 +425,7 @@ def main(argv: list[str] | None = None) -> int:
         suffix = f"  [{rules}]" if rules else ""
         print(f"  call {index}  {verdict:<5}  {decision['proposed_tool']:<14}{suffix}")
         print(f"          {call.why}")
+    print(f"  note: {RECORD_CAVEAT}")
 
     if problems:
         for problem in problems:

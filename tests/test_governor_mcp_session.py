@@ -168,6 +168,40 @@ class McpGovernorTranscriptTests(unittest.TestCase):
         self.assertEqual(replayed, len(EXPECTED_OUTCOMES) + 1)  # the gate calls plus open_session
 
 
+class DemoNarrationTests(unittest.TestCase):
+    """The narration rendered into ``demo/mcp-governor.gif`` may not outrun the mechanism.
+
+    The GIF is a security artifact: it is the one place the claim travels without the
+    caveat that surrounds it in README/SECURITY.md/docs. And the caveat matters, because the
+    governor's record is the list of calls it AUTHORIZED — a gate cannot tell a call the
+    host really executed from one that was authorized and skipped. Proposing
+    ``manager_review`` and ``security_review`` and never running either unlocks
+    ``grant_access`` with no forged history anywhere (see
+    ``tests/test_governor_session.py`` for the recorded-vs-executed boundary).
+
+    So the scripted captions must not assert that a call was observed to run, and the
+    session the GIF records must carry that limit itself.
+    """
+
+    # Phrases that claim the gate saw a call execute. It cannot.
+    EXECUTION_CLAIMS = ("actually run", "actually executed", "really ran", "really executed", "really happened")
+
+    def test_no_scripted_caption_claims_the_gate_observed_an_execution(self) -> None:
+        for index, call in enumerate(_SCRIPT.SESSION, start=1):
+            for phrase in self.EXECUTION_CLAIMS:
+                self.assertNotIn(
+                    phrase,
+                    call.why.lower(),
+                    f"call {index} ({call.proposed_call['tool']}) narrates {phrase!r}, "
+                    "which the gate cannot observe — it only knows what it authorized",
+                )
+
+    def test_the_recorded_session_states_that_its_record_is_authorizations(self) -> None:
+        caveat = _SCRIPT.RECORD_CAVEAT.lower()
+        self.assertIn("authorized", caveat, "the caveat must say the record is authorizations")
+        self.assertIn("check_trace", caveat, "the caveat must point at the tier that audits real execution")
+
+
 class OptionalSdkAvailabilityTests(unittest.TestCase):
     """`_HAS_MCP` must mean "we can serve", not merely "something named mcp is installed".
 
