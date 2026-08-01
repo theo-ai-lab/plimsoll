@@ -203,8 +203,14 @@ def main(argv: list[str] | None = None) -> int:
         description="Serve the deterministic Plimsoll governor over MCP (stdio transport). "
         "No LLM, no outbound network — the same offline rule engine, exposed as MCP tools.",
     )
+    # NOT "permissive": the default Policy() still carries max_repeated_action_count=1
+    # (see SCHEMA.md), so with no policy file the second identical call is blocked by
+    # repeated_action. Scoring an external corpus is what caught the old wording.
     parser.add_argument(
-        "--policy", type=Path, default=None, help="policy JSON file (default: a permissive empty policy)"
+        "--policy",
+        type=Path,
+        default=None,
+        help="policy JSON file (default: the empty policy, which still caps identical repeated calls at 1)",
     )
     parser.add_argument(
         "--name",

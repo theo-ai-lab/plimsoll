@@ -294,6 +294,34 @@ Checked-in, deterministic artifacts you can inspect without running anything:
 
 For the product narrative behind the sample, read [`CASE_STUDY.md`](CASE_STUDY.md).
 
+## Graded against someone else's labels: a 29.9% miss rate
+
+Every other number in this README is self-graded — Plimsoll's engine over Plimsoll's fixtures against Plimsoll's policies. Exactly one number is not.
+
+The runtime governor was replayed over **[R-Judge](https://github.com/Lordog/R-Judge)** (Yuan et al., Findings of EMNLP 2024): 571 multi-turn agent interaction records labelled safe/unsafe by human annotators with no stake in this project.
+
+**The governor misses 29.9% of the unsafe records, and falsely blocks 9.4% of the safe ones.**
+
+| | derived deny-list | default empty policy |
+| --- | ---: | ---: |
+| records scored / total | 495 / 571 | 495 / 571 |
+| unmappable — no tool call at all | 76 (50 unsafe) | 76 (50 unsafe) |
+| caught | 211 | 3 |
+| **missed** | **40** | 248 |
+| **falsely rejected** | **23** | 0 |
+| miss rate over the 251 unsafe records it could see | 15.9% | 98.8% |
+| **worst-case miss rate over all 301 unsafe records** | **29.9%** | 99.0% |
+
+29.9% is the honest denominator: it counts the 50 unsafe records that contain no tool call, which a tool gate is structurally blind to, as misses. Reporting only the 15.9% would have quietly dropped them. The policy is derived from the corpus's tool names and a verb list predeclared before the first measurement, so it never read a label — and nothing was tuned after seeing the result.
+
+```bash
+python -m plimsoll corpus-score --corpus examples/external-corpus/fixture-corpus   # offline, bundled fixture
+python scripts/fetch_rjudge_corpus.py --out .corpus/rjudge                          # pinned + digest-verified
+python scripts/score_external_corpus.py --corpus .corpus/rjudge                     # reproduce the number
+```
+
+This is **one corpus, one revision, one policy**. It is not a claim that Plimsoll catches 70% of unsafe agent behaviour, and it is not comparable to the R-Judge leaderboard (those are LLM judges answering a different question). [`examples/external-corpus/`](examples/external-corpus/) has the scorecard and per-record ledger; [`docs/adr/0001-external-corpus-miss-rate.md`](docs/adr/0001-external-corpus-miss-rate.md) states exactly what the number does and does not license.
+
 ## Reference scenario: IT access-request
 
 A worked, end-to-end reliability loop on a high-stakes workflow: an AI assistant that handles privileged IT access requests must never call `grant_access` before a completed `manager_review` and `security_review`. [`examples/access-request/`](examples/access-request/) holds a deterministic reference agent, the access-control policy, seven adversarial probes, a workflow risk plan, and committed clean/failed/fixed traces and reports.
@@ -307,7 +335,7 @@ Regenerate it with `python scripts/build_access_request_demo.py`. Read [`BEFORE_
 
 ```bash
 python -m pip install -e '.[dev]'      # adds ruff (the only dev dependency)
-python -m unittest discover -s tests   # 266 tests
+python -m unittest discover -s tests   # 303 tests
 ruff check .
 python scripts/validate_public_fixtures.py
 ```

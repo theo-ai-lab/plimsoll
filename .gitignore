@@ -26,3 +26,6 @@ runs/*
 
 # Local notes
 .private/
+
+# Fetched external corpora (not vendored: see docs/adr/0001-external-corpus-miss-rate.md)
+.corpus/

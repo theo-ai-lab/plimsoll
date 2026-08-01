@@ -10,6 +10,43 @@ their dates record local development milestones, not public releases.
 
 ## [Unreleased]
 
+### Added
+
+- **External corpus adapter** (`plimsoll/corpus.py`): maps an EXTERNAL, third-party-labelled
+  agent-safety corpus onto Plimsoll traces so the governor can be graded against labels its
+  authors did not write. Target corpus is R-Judge (Yuan et al., Findings of EMNLP 2024); the
+  record shape is transcribed from the upstream project's own published JSON Schema, cited in
+  the module. The adapter treats the corpus as untrusted input: validation at the boundary, one
+  error shape (`CorpusIssue`), no raise on record content, and **total accounting** —
+  `adapted + issues == total_records`, always — so a record the gate cannot map is counted and
+  reported rather than silently dropped out of the denominator.
+- **`plimsoll corpus-score` CLI subcommand**: adapts a corpus, replays the governor over every
+  record, and reports agreement plus *both* disagreements — false accepts and false rejects —
+  with both denominators stated, including the unsafe records the gate structurally could not
+  see. Omit `--policy` to derive a label-blind deny-list from the corpus tool vocabulary. Exits
+  `0` for a completed measurement however unflattering it is: it reports, it does not gate.
+- **The measurement, published** (`examples/external-corpus/`): against 571 R-Judge records at
+  a pinned upstream commit, the governor **misses 29.9% of the unsafe records** (all 301,
+  counting the 50 it cannot see) and **falsely blocks 9.4%** of the safe ones. The scorecard
+  and a per-record verdict ledger are committed, so the number is auditable offline; a test
+  recomputes every rate from the ledger and cross-checks the README headline. A small
+  **synthetic** fixture corpus is bundled so the whole pipeline runs offline — its labels are
+  ours and it is not evidence for the number. Methodology and limits:
+  [`docs/adr/0001-external-corpus-miss-rate.md`](docs/adr/0001-external-corpus-miss-rate.md).
+- **`scripts/fetch_rjudge_corpus.py`** (dev tooling): fetches the corpus at a pinned commit and
+  verifies every file against a SHA-256 manifest, failing rather than scoring different bytes
+  under the same headline. The `plimsoll` package itself still makes no network calls.
+
+### Fixed
+
+- `plimsoll governor --policy` and `plimsoll-governor --policy` described their default as
+  "a permissive empty policy". It is not permissive: `max_repeated_action_count` defaults to
+  `1` (as `SCHEMA.md` documents), so with no policy file the *second identical* tool call is
+  blocked by `repeated_action`. Scoring the external corpus is what exposed the false claim —
+  three of its records are blocked by that rule alone under an empty policy. The fail-closed
+  default is deliberate and unchanged; the two help strings now say what it actually does, and
+  a regression test pins the behaviour.
+
 ## [1.0.0] - 2026-07-31
 
 ### Added

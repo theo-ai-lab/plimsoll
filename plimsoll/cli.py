@@ -9,6 +9,13 @@ from pathlib import Path
 from plimsoll import __version__
 from plimsoll.adapters import load_adapter_traces
 from plimsoll.cascade import cascade_telemetry, cascade_to_dict
+from plimsoll.corpus import (
+    AdaptationReport,
+    CorpusScore,
+    derive_side_effect_policy,
+    load_rjudge_corpus,
+    score_corpus,
+)
 from plimsoll.diff import trajectory_diff
 from plimsoll.governor import Decision, Governor, PlanFeasibility, coerce_partial_trace
 from plimsoll.io import load_json, load_policy, load_traces, write_json
@@ -47,6 +54,8 @@ def main(argv: list[str] | None = None) -> int:
             return init_policy_command(args)
         if args.command == "governor":
             return governor_command(args)
+        if args.command == "corpus-score":
+            return corpus_score_command(args)
         parser.print_help()
         return EXIT_ERROR
     except ValidationError as exc:
@@ -158,7 +167,14 @@ def build_parser() -> argparse.ArgumentParser:
         "calls that already ran. Reuses the same deterministic rule engine as 'run', evaluated at the "
         "gate. Exits 0 to allow, 1 to block, 2 on a usage/input error. No LLM, no network.",
     )
-    governor.add_argument("--policy", type=Path, help="policy JSON file (default: a permissive empty policy)")
+    # NOT "permissive": the default Policy() still carries max_repeated_action_count=1
+    # (see SCHEMA.md), so with no policy file the second identical call is blocked by
+    # repeated_action. Scoring an external corpus is what caught the old wording.
+    governor.add_argument(
+        "--policy",
+        type=Path,
+        help="policy JSON file (default: the empty policy, which still caps identical repeated calls at 1)",
+    )
     governor.add_argument(
         "--call",
         type=Path,
@@ -194,6 +210,29 @@ def build_parser() -> argparse.ArgumentParser:
         help="control ANSI color in the decision line (default: auto; honors NO_COLOR/FORCE_COLOR)",
     )
     governor.add_argument("--no-color", action="store_true", help="alias for --color never")
+
+    corpus = sub.add_parser(
+        "corpus-score",
+        help="score the governor against an EXTERNAL, third-party-labelled corpus",
+        description="Adapt an external agent-safety corpus (R-Judge record schema), replay the "
+        "governor over every record, and compare its allow/block verdicts to the corpus's own "
+        "labels. Reports agreement AND both disagreements — false accepts and false rejects — "
+        "with both denominators stated, including the records the gate structurally could not "
+        "see. Exits 0 for a completed measurement whatever the measurement says: this reports, "
+        "it does not gate. No LLM, no network.",
+    )
+    corpus.add_argument("--corpus", required=True, type=Path, help="corpus JSON file or directory")
+    corpus.add_argument(
+        "--policy",
+        type=Path,
+        default=None,
+        help="policy JSON file. Omit to DERIVE one from the corpus tool vocabulary and the "
+        "predeclared side-effect verb list (plimsoll.corpus.SIDE_EFFECT_VERBS), which never "
+        "reads a label.",
+    )
+    corpus.add_argument("--out", type=Path, default=None, metavar="PATH", help="write the full scorecard JSON here")
+    corpus.add_argument("--json", dest="as_json", action="store_true", help="print the scorecard as JSON to stdout")
+    corpus.add_argument("-q", "--quiet", action="store_true", help="suppress the human-readable summary")
     return parser
 
 
@@ -256,6 +295,51 @@ def init_policy_command(args: argparse.Namespace) -> int:
     write_json(args.out, infer_policy(traces))
     print(f"Plimsoll: wrote inferred policy to {args.out}", file=sys.stderr)
     return EXIT_OK
+
+
+def corpus_score_command(args: argparse.Namespace) -> int:
+    """Score the governor against an external, third-party-labelled corpus.
+
+    Always exits ``EXIT_OK`` for a completed measurement, however unflattering it is: this
+    command REPORTS a miss rate, it does not gate a build on one. Only a usage/input problem
+    (a missing corpus, an unreadable policy) exits ``EXIT_ERROR``, via ``ValidationError``.
+
+    The records the adapter could not map are printed alongside the ones it scored. Leaving
+    them out would shrink the denominator and flatter the result, which is the failure this
+    whole surface exists to make visible.
+    """
+    report = load_rjudge_corpus(args.corpus)
+    policy = load_policy(args.policy) if args.policy else derive_side_effect_policy(report.tool_vocabulary())
+    score = score_corpus(report, Governor(policy))
+    payload = score.to_dict()
+
+    if args.out is not None:
+        write_json(args.out, payload)
+    if args.as_json:
+        print(json.dumps(payload, indent=2))
+    if not args.quiet and not args.as_json:
+        print(_corpus_summary(report, score, derived=args.policy is None))
+    return EXIT_OK
+
+
+def _corpus_summary(report: AdaptationReport, score: CorpusScore, *, derived: bool) -> str:
+    unseen = ", ".join(f"{code}={count}" for code, count in report.issue_counts().items()) or "none"
+    origin = "derived from the corpus tool vocabulary (label-blind)" if derived else "supplied"
+    lines = [
+        f"Plimsoll corpus-score: {score.scored_records}/{score.total_records} records scored, "
+        f"{score.unmapped_records} unmappable ({unseen}); policy {origin}",
+        f"  caught {score.caught}  missed {score.missed}  "
+        f"false-rejects {score.false_rejects}  clean-allows {score.clean_allows}",
+    ]
+    if score.miss_rate is not None:
+        lines.append(
+            f"  miss rate {score.miss_rate:.3f} over {score.unsafe_scored} unsafe records the gate could see; "
+            f"worst-case miss rate {score.worst_case_miss_rate:.3f} over all {score.unsafe_total} unsafe records "
+            f"({score.unmapped_unsafe} of them unseen and counted as misses)"
+        )
+    if score.false_reject_rate is not None:
+        lines.append(f"  false-reject rate {score.false_reject_rate:.3f} over {score.safe_scored} safe records")
+    return "\n".join(lines)
 
 
 def governor_command(args: argparse.Namespace) -> int:
