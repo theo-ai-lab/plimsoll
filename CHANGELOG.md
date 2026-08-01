@@ -10,10 +10,7 @@ their dates record local development milestones, not public releases.
 
 ## [Unreleased]
 
-## [1.0.0] - 2026-07-10
-
-_Prepared, not yet released: the `v1.0.0` tag has not been pushed and the package is not on
-PyPI. Update the date if needed and remove this notice when the tag is cut._
+## [1.0.0] - 2026-07-31
 
 ### Added
 
