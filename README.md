@@ -312,7 +312,7 @@ The runtime governor was replayed over **[R-Judge](https://github.com/Lordog/R-J
 | miss rate over the 251 unsafe records it could see | 15.9% | 98.8% |
 | **worst-case miss rate over all 301 unsafe records** | **29.9%** | 99.0% |
 
-29.9% is the honest denominator: it counts the 50 unsafe records that contain no tool call, which a tool gate is structurally blind to, as misses. Reporting only the 15.9% would have quietly dropped them. The policy is derived from the corpus's tool names and a verb list predeclared before the first measurement, so it never read a label — and nothing was tuned after seeing the result.
+29.9% is the honest denominator: it counts the 50 unsafe records that contain no tool call, which a tool gate is structurally blind to, as misses. Reporting only the 15.9% would have quietly dropped them. The policy is a pure function of the corpus's tool vocabulary and a fixed verb list, so it never read a label. On tuning, be precise about what this repository can and cannot show: the verb list is pinned in code by a test, but the plan, the scorer and the scorecard all first appear together in commit `df4fb02`, so **there is no commit predating the measurement that would prove the list was fixed beforehand**. Treat the label-blindness as an argument from the code's structure -- the scorer cannot read a label because it is never given one -- not as a preregistration, which would need an immutable timestamp this history does not contain.
 
 ```bash
 python -m plimsoll corpus-score --corpus examples/external-corpus/fixture-corpus   # offline, bundled fixture

@@ -74,8 +74,12 @@ corpora) asserts the invariant holds, nothing raises, and every rejection carrie
 
 The deny-list is the dominant free parameter of a measurement like this — pick it after
 looking at the labels and you have fitted the test set. So the scored policy is a **pure
-function of the corpus tool vocabulary and a verb list predeclared in the plan document,
-committed before the first measurement**:
+function of the corpus tool vocabulary and a fixed verb list**. The original wording here
+claimed the list was "committed before the first measurement". That is not evidenced: the
+plan, the scorer and the scorecard all land together in `df4fb02`, so the repository
+contains no artifact predating the measurement. What the code does establish is stronger
+than nothing and weaker than preregistration -- the scorer is never passed a label, so it
+cannot have fitted one:
 
     Send Post Transfer Withdraw Deposit Pay Delete Share
     Grant Create Update Download Move Execute Write
