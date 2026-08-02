@@ -30,23 +30,11 @@ jobs:
           python-version: "3.12"
 
       - name: Verify the tag matches the packaged version and the changelog is cut
-        # ::error:: annotations must go to stdout — the runner does not parse stderr.
-        run: |
-          tag="${GITHUB_REF_NAME#v}"
-          version="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
-          if [ "$tag" != "$version" ]; then
-            echo "::error::tag v$tag does not match pyproject.toml version $version — refusing to publish"
-            exit 1
-          fi
-          if ! grep -qF "## [$version]" CHANGELOG.md; then
-            echo "::error::CHANGELOG.md has no '## [$version]' entry — refusing to publish"
-            exit 1
-          fi
-          if grep -qF "Prepared, not yet released" CHANGELOG.md; then
-            echo "::error::CHANGELOG.md still carries the pre-tag placeholder — remove it before tagging"
-            exit 1
-          fi
-          echo "tag v$tag matches pyproject.toml version $version and the changelog is cut"
+        # The comparison lives in scripts/release_guard.py, not inline here, because a
+        # guard that only runs on a tag push is a guard nobody has ever seen work — and
+        # this one protects an irreversible action (a burned PyPI version). Same code
+        # path, exercised by tests/test_release_guard.py on every CI run.
+        run: python -m scripts.release_guard "$GITHUB_REF_NAME"
 
       - name: Build sdist and wheel
         run: |
