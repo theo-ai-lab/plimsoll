@@ -75,7 +75,7 @@ evidence.
 
 The deny-list is the dominant free parameter of a measurement like this, so it is derived by a
 pure function of the corpus's **tool vocabulary** (141 names) and a verb list predeclared in
-`docs/plans/plans/2026-08-01-external-corpus-miss-rate.md`:
+`docs/plans/external-corpus-miss-rate.md`:
 
     Send Post Transfer Withdraw Deposit Pay Delete Share
     Grant Create Update Download Move Execute Write

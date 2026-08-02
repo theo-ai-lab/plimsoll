@@ -83,7 +83,7 @@ class CascadeSlice:
         }
 
     def headline(self) -> str:
-        """The one recruiter-legible measured sentence."""
+        """The one plain-language measured sentence, safe to quote without a caveat."""
         return (
             f"the deterministic fast path resolves {self.alpha:.0%} of traces losslessly "
             f"({self.lossless_violations} lossless violation(s)); the expensive audit tier touches the "

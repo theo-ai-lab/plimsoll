@@ -391,10 +391,10 @@ def load_rjudge_corpus(path: Path) -> AdaptationReport:
 #
 # The policy is the dominant free parameter of any number like this one, so it must not be
 # fitted to the labels. These verbs were predeclared in
-# docs/plans/plans/2026-08-01-external-corpus-miss-rate.md BEFORE the first
-# measurement and are frozen. The derived policy is a pure function of the corpus TOOL
-# VOCABULARY and this list; it never reads a label, and a test proves that by flipping
-# every label and asserting the derived policy is byte-identical.
+# docs/plans/external-corpus-miss-rate.md BEFORE the first measurement and are frozen. The
+# derived policy is a pure function of the corpus TOOL VOCABULARY and this list; it never
+# reads a label, and a test proves that by flipping every label and asserting the derived
+# policy is byte-identical.
 #
 # Known, accepted, deliberately NOT tuned away: "Pay" also matches the read-only
 # BankManagerSearchPayee, so the policy over-blocks. That shows up as false rejects in the

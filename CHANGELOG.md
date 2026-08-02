@@ -39,6 +39,16 @@ their dates record local development milestones, not public releases.
 
 ### Fixed
 
+- **The test suite could not be discovered by its own documented command.**
+  `tests/test_release_guard.py` was written against `pytest`, which is not a declared
+  dependency — `[dev]` installs only `ruff`. `python -m unittest discover -s tests`, the
+  command CI runs and `CONTRIBUTING.md` documents, therefore failed to import that module
+  and exited non-zero on every leg. Rewritten in `unittest` to match the other 28 test
+  modules, with the parametrized case expressed as `subTest`; no assertion changed. Stated
+  test counts synced to the 313 the suite now reports.
+- `docs/MCP_DEMO.md` still described the default policy as "permissive ... nothing is
+  gated", the same wording corrected in the two help strings below. It now states the
+  `repeated_action` floor that the empty policy actually enforces.
 - `plimsoll governor --policy` and `plimsoll-governor --policy` described their default as
   "a permissive empty policy". It is not permissive: `max_repeated_action_count` defaults to
   `1` (as `SCHEMA.md` documents), so with no policy file the *second identical* tool call is

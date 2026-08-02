@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Live cross-repo gate demo: the Plimsoll Governor firing inside a running agent loop.
+"""Live gate demo: the Plimsoll Governor firing inside a running agent loop.
 
 Plimsoll's CLI is a *post-hoc* trace checker. The :class:`~plimsoll.governor.Governor`
 reuses the very same deterministic rule engine as a *pre-execution* gate: before an agent

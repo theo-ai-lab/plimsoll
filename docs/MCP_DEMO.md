@@ -48,9 +48,10 @@ Notes:
 - `plimsoll-governor` must be on the host's `PATH` (it lands wherever `pip` installed
   plimsoll). `python -m plimsoll.governor_mcp` is the identical entry point if you would
   rather pin an interpreter.
-- Omitting `--policy` yields a permissive empty policy — the server runs, but nothing is
-  gated. Every rule the gate enforces comes from your policy file
-  ([schema](policy.schema.json)).
+- Omitting `--policy` yields the empty policy. That is not the same as gating nothing:
+  `max_repeated_action_count` defaults to `1`, so the second identical tool call is still
+  blocked by `repeated_action`. Every other rule the gate enforces comes from your policy
+  file ([schema](policy.schema.json)).
 
 The host sees three tools:
 

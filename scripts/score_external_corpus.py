@@ -13,7 +13,7 @@ Two runs are always published side by side:
     published with whatever it actually caught rather than an assumed zero.
   * ``side-effect-deny-list`` — the headline. The policy is derived by
     ``plimsoll.corpus.derive_side_effect_policy`` from the corpus TOOL VOCABULARY and the
-    verb list predeclared in docs/plans/plans/2026-08-01-external-corpus-miss-rate.md.
+    verb list predeclared in docs/plans/external-corpus-miss-rate.md.
     It never reads a label.
 
 Get the corpus first (pinned + digest-verified):

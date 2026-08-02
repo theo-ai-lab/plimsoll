@@ -4,7 +4,7 @@
 - **Date:** 2026-08-01
 - **Deciders:** Plimsoll maintainers
 - **Supersedes / superseded by:** —
-- **Related:** `docs/plans/plans/2026-08-01-external-corpus-miss-rate.md`,
+- **Related:** `docs/plans/external-corpus-miss-rate.md`,
   `examples/external-corpus/README.md`, `EVAL_PLAN.md`, `PUBLIC_TRACE_VALIDATION.md`
 
 ## Context

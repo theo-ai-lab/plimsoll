@@ -11,6 +11,9 @@ DEFAULT_PII_PATTERNS = [
     r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b",
 ]
 
+# The first two prefixes are split across a concatenation so this source file does not
+# itself contain a literal credential prefix — otherwise every secret scanner run over this
+# repository flags the detector as the leak. The compiled patterns are unaffected.
 DEFAULT_SECRET_PATTERNS = [
     r"\b" + "s" + r"k-[A-Za-z0-9_-]{16,}\b",
     r"\b" + "g" + r"hp_[A-Za-z0-9_]{20,}\b",
