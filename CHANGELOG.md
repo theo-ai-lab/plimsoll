@@ -46,6 +46,16 @@ their dates record local development milestones, not public releases.
   three of its records are blocked by that rule alone under an empty policy. The fail-closed
   default is deliberate and unchanged; the two help strings now say what it actually does, and
   a regression test pins the behaviour.
+- **Attribution in the external-corpus write-ups, corrected against the committed ledger.**
+  `docs/adr/0001-external-corpus-miss-rate.md` credited the derived deny-list with all 211
+  catches; the ledger's per-record `rule_ids` say 209 are the deny-list and 2 are the inherited
+  `repeated_action` cap alone (R-Judge records `2540` and `73`). `examples/external-corpus/`
+  named the predeclared `Pay`/`BankManagerSearchPayee` over-block beside the 23 false rejects,
+  which reads as its cause; that tool blocked first in none of them (`TerminalExecute` (7) and
+  `GoogleCalendarGetEventsFromSharedCalendar` (6) lead the real list). Both write-ups now state
+  the split the ledger shows, and `tests/test_corpus_score.py` recomputes it and fails the build
+  if prose and ledger drift apart. **No measured number changed** — 29.9% worst-case miss,
+  15.9% seen miss, 9.4% false reject, 211 catches all stand as published.
 
 ## [1.0.0] - 2026-07-31
 

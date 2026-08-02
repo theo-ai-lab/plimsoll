@@ -26,7 +26,7 @@ Requires Python 3.11+.
 python -m pip install -e '.[dev]'
 ```
 
-Run the tests (303 tests):
+Run the tests (305 tests):
 
 ```bash
 python -m unittest discover -s tests

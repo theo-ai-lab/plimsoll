@@ -20,12 +20,20 @@ what we then say about them, and the ways that statement could flatter us:
     policy file. It is NOT a clean zero — scoring this corpus is what revealed that the
     "empty" policy still caps identical repeated calls — and it is published as measured
     rather than as the round number everyone would expect.
+
+5.  EACH CATCH IS CREDITED TO THE RULE THAT MADE IT. The scored configuration is the derived
+    deny-list PLUS the shipped ``max_repeated_action_count`` default, so the catches are not
+    all the deny-list's. Crediting the deny-list with the lot would overstate the one free
+    parameter this measurement exists to keep honest, so the split is recomputed from the
+    committed ledger and the ADR is required to state it.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import unittest
+from collections import Counter
 from pathlib import Path
 
 from plimsoll.corpus import (
@@ -41,7 +49,9 @@ from plimsoll.governor import Governor
 from plimsoll.models import Policy
 from plimsoll.policy import policy_digest
 
-FIXTURE_DIR = Path(__file__).resolve().parents[1] / "examples" / "external-corpus"
+ROOT = Path(__file__).resolve().parents[1]
+FIXTURE_DIR = ROOT / "examples" / "external-corpus"
+ADR_PATH = ROOT / "docs" / "adr" / "0001-external-corpus-miss-rate.md"
 
 
 def record(record_id: int, label: int, tools: list[str]) -> dict:
@@ -325,6 +335,61 @@ class ThePublishedNumberCannotSilentlyRot(unittest.TestCase):
         self.assertEqual(baseline["confusion"]["false_reject"], 0)
         blocked = [row for row in baseline["ledger"] if row["verdict"] == "block"]
         self.assertEqual({tuple(row["rule_ids"]) for row in blocked}, {("repeated_action",)})
+
+    def test_the_adr_credits_each_catch_to_the_rule_that_actually_blocked_it(self) -> None:
+        """211 catches are not 211 deny-list catches, and the ADR may not imply they are.
+
+        The scored configuration is the derived deny-list plus the shipped
+        ``max_repeated_action_count`` default, so a record can be stopped by the repeat cap
+        with no forbidden tool in it at all. Those catches belong to an inherited default, not
+        to the free parameter this measurement was built to keep honest. The split is derived
+        here from the committed per-record ledger and the ADR must state that same split, so
+        neither the ledger nor the prose can drift away from the other.
+        """
+        ledger = self.scorecards["runs"]["side-effect-deny-list"]["ledger"]
+        caught = [row for row in ledger if row["cell"] == "caught"]
+        deny_list = [row for row in caught if "forbidden_tool" in row["rule_ids"]]
+        repeat_only = [row for row in caught if row["rule_ids"] == ["repeated_action"]]
+        self.assertEqual(len(deny_list) + len(repeat_only), len(caught), "every catch must be attributable")
+
+        adr = ADR_PATH.read_text(encoding="utf-8")
+        # Line wrapping is prose formatting, not meaning: match against a whitespace-flattened
+        # copy so re-wrapping the paragraph cannot silently disarm this lock.
+        stated = re.search(
+            r"(\d+) of the (\d+) catches are the deny-list \(`forbidden_tool`\); "
+            r"the other (\d+) are the inherited repeat cap \(`repeated_action`\) alone",
+            " ".join(adr.split()),
+        )
+        self.assertIsNotNone(stated, "the ADR must state the catch attribution in the pinned form")
+        assert stated is not None  # narrows for type checkers; the assertion above is the real gate
+        self.assertEqual(
+            tuple(int(group) for group in stated.groups()),
+            (len(deny_list), len(caught), len(repeat_only)),
+        )
+        for row in repeat_only:
+            self.assertIn(f"`{row['record_id']}`", adr, "the ADR must name the records the repeat cap alone caught")
+            self.assertIn(row["source"], adr)
+        self.assertIn("max_repeated_action_count", adr, "the ADR must name the default that is part of the scored run")
+
+    def test_the_false_rejects_are_attributed_to_the_tools_that_actually_blocked_them(self) -> None:
+        """The predeclared over-block is not the same thing as the over-blocks that happened.
+
+        ``Pay`` matching the read-only ``BankManagerSearchPayee`` was called out in the plan
+        before the measurement, which makes it easy to narrate as the cause of the false
+        rejects. The ledger says otherwise: it blocked first in none of them. The published
+        prose must name the tools that did.
+        """
+        ledger = self.scorecards["runs"]["side-effect-deny-list"]["ledger"]
+        blockers = Counter(row["blocking_tool"] for row in ledger if row["cell"] == "false_reject")
+        self.assertEqual(
+            sum(blockers.values()), self.scorecards["runs"]["side-effect-deny-list"]["confusion"]["false_reject"]
+        )
+
+        text = (FIXTURE_DIR / "README.md").read_text(encoding="utf-8")
+        self.assertNotIn("BankManagerSearchPayee", set(blockers))
+        self.assertIn("blocked first in none of", text)
+        for tool, count in blockers.most_common(2):
+            self.assertIn(f"`{tool}` ({count})", text)
 
     def test_the_scorecard_pins_the_corpus_revision_it_was_measured_against(self) -> None:
         from plimsoll.corpus import RJUDGE_PINNED_COMMIT

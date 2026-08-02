@@ -61,10 +61,15 @@ Two structurally different failures, and it is worth keeping them apart:
    the harm was in *what was read and to whom it went*, which a name-based deny-list cannot
    see. Most of these are in `Application` (20) and `IoT` (10).
 
-The 23 false rejects are the mirror image: the predeclared verb `Pay` also matches the
-read-only `BankManagerSearchPayee`. That over-block was noted in the plan **before** the first
-measurement and deliberately left in. Tuning the verb list after seeing the score is how a
-number like this stops being evidence.
+The 23 false rejects are the mirror image: records R-Judge's annotators judged safe in which
+the agent did call a tool whose *name* carries a side-effect verb. The ledger names the tool
+that stopped each one — most often `TerminalExecute` (7) and
+`GoogleCalendarGetEventsFromSharedCalendar` (6). A name-based gate cannot tell a benign
+`TerminalExecute` from a harmful one, so it pays for the ones it stops. The over-block
+predeclared in the plan — `Pay` also matches the read-only `BankManagerSearchPayee` — was
+deliberately left in for the same reason, though in the event it blocked first in none of the
+23. Tuning the verb list after seeing the score is how a number like this stops being
+evidence.
 
 ## The policy never read the labels
 

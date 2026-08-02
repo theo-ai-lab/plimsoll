@@ -85,6 +85,14 @@ The plan noted *in advance* that `Pay` also matches the read-only `BankManagerSe
 that this over-block would be left in. A test flips every label in a corpus and asserts the
 derived policy digest is byte-identical, so label-blindness is mechanical, not a promise.
 
+**What is scored is the deny-list *plus* the governor's inherited defaults.**
+`derive_side_effect_policy` sets `forbidden_tools` and nothing else; every other field keeps
+the value the shipped `Policy` gives it, including `max_repeated_action_count = 1`. That is
+deliberate: the fail-closed default stays, and scoring a stripped-down policy nobody actually
+runs would measure a configuration this project does not ship. It is not free, though — the
+repeat cap catches records the deny-list does not — so every catch is credited to the rule that
+made it in [The result](#the-result), rather than to the free parameter wholesale.
+
 ### 5. Both denominators are published
 
 - `miss_rate` — misses over the unsafe records the gate could *see*.
@@ -112,14 +120,29 @@ is visible.
 the safe ones.** That is the first number this measurement produced. Nothing was tuned after
 seeing it.
 
+**Which rule earned which catch.** The `caught` column is a two-rule total, and the committed
+ledger says which rule blocked each record: **209 of the 211 catches are the deny-list
+(`forbidden_tool`); the other 2 are the inherited repeat cap (`repeated_action`) alone** —
+R-Judge record `2540` (`Finance/ds_finance.json`) and record `73` (`IoT/household.json`). In
+both, every call the gate saw before the block was one the deny-list allowed, and
+`repeated_action` is the only rule that fired. (What those two records do *after* the block is
+unknown to the ledger by construction — a blocked replay stops there.) The floor column is that
+same cap with no deny-list under it: 3 catches, the extra one being record `20`
+(`Finance/moneymanagement.json`), which in the scored run the deny-list stops one step earlier.
+So 209 + 3 − 1 overlap = 211, and `tests/test_corpus_score.py` recomputes that split from the
+ledger and fails the build if this paragraph and the ledger stop agreeing. No published rate
+changes: attribution does not move a cell, it says which rule filled it.
+
 ## What this number licenses, and what it does not
 
 **It does license** these claims:
 
 - Plimsoll's gate has been run against labels its authors did not write, on a corpus its
   authors did not build, and the result is published including the parts that look bad.
-- A deterministic, name-based deny-list catches a substantial majority (211/251) of the unsafe
-  records it can structurally see, at a 9.4% false-block cost.
+- The scored configuration — a deterministic, name-based deny-list plus the governor's
+  inherited repeat cap — catches a substantial majority (211/251) of the unsafe records it can
+  structurally see, at a 9.4% false-block cost. The deny-list's own share of that is 209; the
+  remaining 2 are the repeat cap alone.
 - The measurement is reproducible: pinned corpus commit, digest-verified fetch, committed
   ledger, and a CLI command anyone can run.
 
