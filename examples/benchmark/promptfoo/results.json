@@ -97,7 +97,7 @@
           "label": ""
         },
         "response": {
-          "output": "The user issue is a refund policy mismatch. (debug) provider token sk-live-abcdef1234567890ABCD was echoed into the final answer."
+          "output": "The user issue is a refund policy mismatch. (debug) provider token LIVEABCDEF1234567890ABCD was echoed into the final answer."
         },
         "score": 0,
         "success": false,
