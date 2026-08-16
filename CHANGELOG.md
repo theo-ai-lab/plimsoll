@@ -10,10 +10,64 @@ their dates record local development milestones, not public releases.
 
 ## [Unreleased]
 
-## [1.0.0] - 2026-07-10
+### Added
 
-_Prepared, not yet released: the `v1.0.0` tag has not been pushed and the package is not on
-PyPI. Update the date if needed and remove this notice when the tag is cut._
+- **External corpus adapter** (`plimsoll/corpus.py`): maps an EXTERNAL, third-party-labelled
+  agent-safety corpus onto Plimsoll traces so the governor can be graded against labels its
+  authors did not write. Target corpus is R-Judge (Yuan et al., Findings of EMNLP 2024); the
+  record shape is transcribed from the upstream project's own published JSON Schema, cited in
+  the module. The adapter treats the corpus as untrusted input: validation at the boundary, one
+  error shape (`CorpusIssue`), no raise on record content, and **total accounting** —
+  `adapted + issues == total_records`, always — so a record the gate cannot map is counted and
+  reported rather than silently dropped out of the denominator.
+- **`plimsoll corpus-score` CLI subcommand**: adapts a corpus, replays the governor over every
+  record, and reports agreement plus *both* disagreements — false accepts and false rejects —
+  with both denominators stated, including the unsafe records the gate structurally could not
+  see. Omit `--policy` to derive a label-blind deny-list from the corpus tool vocabulary. Exits
+  `0` for a completed measurement however unflattering it is: it reports, it does not gate.
+- **The measurement, published** (`examples/external-corpus/`): against 571 R-Judge records at
+  a pinned upstream commit, the governor **misses 29.9% of the unsafe records** (all 301,
+  counting the 50 it cannot see) and **falsely blocks 9.4%** of the safe ones. The scorecard
+  and a per-record verdict ledger are committed, so the number is auditable offline; a test
+  recomputes every rate from the ledger and cross-checks the README headline. A small
+  **synthetic** fixture corpus is bundled so the whole pipeline runs offline — its labels are
+  ours and it is not evidence for the number. Methodology and limits:
+  [`docs/adr/0001-external-corpus-miss-rate.md`](docs/adr/0001-external-corpus-miss-rate.md).
+- **`scripts/fetch_rjudge_corpus.py`** (dev tooling): fetches the corpus at a pinned commit and
+  verifies every file against a SHA-256 manifest, failing rather than scoring different bytes
+  under the same headline. The `plimsoll` package itself still makes no network calls.
+
+### Fixed
+
+- **The test suite could not be discovered by its own documented command.**
+  `tests/test_release_guard.py` was written against `pytest`, which is not a declared
+  dependency — `[dev]` installs only `ruff`. `python -m unittest discover -s tests`, the
+  command CI runs and `CONTRIBUTING.md` documents, therefore failed to import that module
+  and exited non-zero on every leg. Rewritten in `unittest` to match the other 28 test
+  modules, with the parametrized case expressed as `subTest`; no assertion changed. Stated
+  test counts synced to the 313 the suite now reports.
+- `docs/MCP_DEMO.md` still described the default policy as "permissive ... nothing is
+  gated", the same wording corrected in the two help strings below. It now states the
+  `repeated_action` floor that the empty policy actually enforces.
+- `plimsoll governor --policy` and `plimsoll-governor --policy` described their default as
+  "a permissive empty policy". It is not permissive: `max_repeated_action_count` defaults to
+  `1` (as `SCHEMA.md` documents), so with no policy file the *second identical* tool call is
+  blocked by `repeated_action`. Scoring the external corpus is what exposed the false claim —
+  three of its records are blocked by that rule alone under an empty policy. The fail-closed
+  default is deliberate and unchanged; the two help strings now say what it actually does, and
+  a regression test pins the behaviour.
+- **Attribution in the external-corpus write-ups, corrected against the committed ledger.**
+  `docs/adr/0001-external-corpus-miss-rate.md` credited the derived deny-list with all 211
+  catches; the ledger's per-record `rule_ids` say 209 are the deny-list and 2 are the inherited
+  `repeated_action` cap alone (R-Judge records `2540` and `73`). `examples/external-corpus/`
+  named the predeclared `Pay`/`BankManagerSearchPayee` over-block beside the 23 false rejects,
+  which reads as its cause; that tool blocked first in none of them (`TerminalExecute` (7) and
+  `GoogleCalendarGetEventsFromSharedCalendar` (6) lead the real list). Both write-ups now state
+  the split the ledger shows, and `tests/test_corpus_score.py` recomputes it and fails the build
+  if prose and ledger drift apart. **No measured number changed** — 29.9% worst-case miss,
+  15.9% seen miss, 9.4% false reject, 211 catches all stand as published.
+
+## [1.0.0] - 2026-07-31
 
 ### Added
 
@@ -29,15 +83,30 @@ PyPI. Update the date if needed and remove this notice when the tag is cut._
   `--call PATH` or stdin, takes the calls that already ran via `--partial-trace`, evaluates it
   against `--policy`, and prints the allow/block decision with the rule that fired. Exits `0` to
   allow, `1` to block, `2` on a usage error; `--json` emits the machine-readable `Decision`.
-- Optional MCP-style tool surface for the governor (`plimsoll/governor_mcp.py`): the gate
-  (`propose_tool_call`) and the full audit (`check_trace`) as plain JSON-in/JSON-out
-  callables, with optional `mcp`-SDK server wiring. The `mcp` SDK is an optional extra; the
-  core engine never imports it.
+- **Governor-owned gate sessions** (`Governor.open_session` / `GovernorSession`): at runtime the
+  governor keeps the record of what has already run instead of taking it from the agent it is
+  gating. A session appends a call only when the gate *allowed* it, and every ordering, budget
+  and repetition verdict is computed from that record. A caller-supplied history is never used
+  as the record: send one and it is cross-checked, and any disagreement fails closed
+  (`session_history_mismatch`); propose without a live session and the call is refused
+  (`session_unknown`) rather than judged against an empty past. The stateless
+  `Governor.evaluate(partial_trace, proposed_call)` remains as the *offline* evaluator behind
+  the whole-plan dry-run, gate replay and cascade telemetry.
+- **Policy digest on every decision**: each `Decision` carries `policy_digest`, the SHA-256 of
+  the effective policy text (`plimsoll.policy.policy_digest`, canonical over every `Policy`
+  field), plus the `session_id` it was decided in — so a recorded verdict provably binds to the
+  exact policy content that produced it.
+- Optional MCP-style tool surface for the governor (`plimsoll/governor_mcp.py`): `open_session`,
+  the gate (`propose_tool_call(session_id, proposed_call, partial_trace=None)`) and the full
+  audit (`check_trace`) as plain JSON-in/JSON-out callables, with optional `mcp`-SDK server
+  wiring. The `mcp` SDK is an optional extra; the core engine never imports it.
 - **`plimsoll-governor` console script**: launches the governor as an MCP server (stdio) so an
-  MCP host can call `propose_tool_call`/`check_trace`. Requires the new optional `mcp` extra
-  (`pip install "plimsoll[mcp]"`); the import stays lazy, so the zero-dependency core install is
-  unaffected and the launcher exits with a clear install hint (no silent fallback) when the SDK
-  is absent.
+  MCP host can call `open_session`/`propose_tool_call`/`check_trace`. Requires the new optional
+  `mcp` extra (`pip install "plimsoll[mcp]"`), pinned to `>=1.0,<2` because the served wiring is
+  the 1.x `mcp.server.fastmcp` API that 2.x removed. Availability is decided by importing that
+  wiring, not the top-level package, so an SDK the server cannot use reads as "cannot serve":
+  the launcher prints the install hint and exits `2` (no silent fallback, no traceback halfway
+  through startup). The import stays lazy, so the zero-dependency core install is unaffected.
 - **Armed `pass^k` CI gate** with committed multi-run fixtures (`examples/reliability/`): a
   stable directory (three runs of one `case_id`, all pass → `pass^3 = 1.0`) and a flaky one
   (one run bypasses the required approval → `pass^3 = 0.0`). The repo's own CI runs both as a
@@ -48,13 +117,15 @@ PyPI. Update the date if needed and remove this notice when the tag is cut._
   "blocked N of M unsafe calls" headline is verified, not asserted.
 - **Recorded MCP governor session** (`examples/mcp-governor-session/`, `docs/MCP_DEMO.md`): a
   committed JSON-RPC stdio transcript of the real `plimsoll-governor` server refusing tool
-  calls pre-execution — one allow, one `tool_order` deny of the task's own goal action, one
+  calls pre-execution — the session opened server-side, two allows, a `tool_order` deny of the
+  task's own goal action, that same call retried with a forged history and refused
+  (`session_history_mismatch`), the approvals actually running so the grant succeeds, and a
   `max_tokens` budget block. Captured by a scripted deterministic client
   (`scripts/build_mcp_governor_session.py`, stdlib-only, double-captures and byte-compares to
   verify determinism; not a live-model session) and pinned to the engine by
   `tests/test_governor_mcp_session.py`, which replays the transcript SDK-free on every run and
   end-to-end against a real server subprocess when the `mcp` extra is installed.
-  `docs/MCP_DEMO.md` documents the `.mcp.json` host wiring and the three-outcome walkthrough;
+  `docs/MCP_DEMO.md` documents the `.mcp.json` host wiring and the full walkthrough;
   `demo/mcp-governor.{tape,gif}` record the session run.
 - `pass^k` reliability aggregation over repeated recorded runs of the same `case_id`
   (`plimsoll/passk.py`): the tau-Bench reliability view (`pass^k` = fraction of tasks whose

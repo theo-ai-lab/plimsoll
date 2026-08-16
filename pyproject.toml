@@ -25,7 +25,8 @@ dev = ["ruff>=0.6"]
 # Optional: the MCP SDK, needed only to serve the governor over MCP (`plimsoll-governor`).
 # The core engine, the `plimsoll` CLI, and the SDK-free GovernorTools/make_handlers surface
 # never import it, so the zero-runtime-dependency contract holds without this extra.
-mcp = ["mcp>=1.0"]
+# Capped below 2.0: the served wiring is the 1.x `mcp.server.fastmcp` API, which 2.x removed.
+mcp = ["mcp>=1.0,<2"]
 # Optional, dev-only: needed solely to regenerate the real OpenTelemetry trace fixtures
 # (examples/access-request/build_real_otel_trace.py). NOT a runtime dependency — the
 # committed JSON fixtures are what Plimsoll ingests, and the core CLI has zero deps.

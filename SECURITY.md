@@ -35,6 +35,9 @@ Framework-shaped fixture adapters preserve attributes needed for local evidence.
 | Policy init | May infer a permissive policy from a bad run. | Generated policies are starter files and must be reviewed before use as gates. |
 | CI artifacts | JUnit/SARIF can be uploaded by a CI system if configured by the user. | Plimsoll itself does not upload; the example workflow uploads only within the user's CI artifact store. |
 | Adapters | Framework-shaped traces can include unexpected attributes. | Adapters normalize a documented subset and preserve attributes locally for evidence. |
+| Runtime gate history | The agent being gated could widen its own permissions by claiming prerequisite calls already ran, or by dropping spent calls to reclaim a budget. | The governor owns the record: a `GovernorSession` appends only calls it allowed, a caller-supplied history is cross-checked and never trusted (`session_history_mismatch`), and a proposal with no live session is refused (`session_unknown`). Both fail closed. |
+| Runtime gate scope | The record proves what the governor *authorized*, not what the host executed; an authorized call the agent skips is invisible to the gate. | Run the post-hoc `check_trace` audit over the real trace — it sees what actually happened. The gate is the cheap tier, not the only one. |
+| Session handles | Handles are sequential process-local names (`session-1`), not bearer secrets, so a co-located caller could name another session. | The stdio transport the `plimsoll-governor` console script serves is one process per client. Deploy one server process per agent; do not multiplex mutually distrusting agents onto one governor. |
 
 ## Recommended Use
 

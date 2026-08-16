@@ -396,7 +396,8 @@ _RULE_PROVENANCE = {
 }
 
 # Self-contained stylesheet (light + dark, system fonts only, no web fonts / CDN). Kept as a plain
-# string (not an f-string) so CSS braces are literal. Tokens match the published design direction.
+# string (not an f-string) so CSS braces are literal. The custom properties below are the single
+# source of truth for the report's palette, type scale, and radii.
 _REPORT_CSS = """
 *{box-sizing:border-box}
 :root{color-scheme:light dark;

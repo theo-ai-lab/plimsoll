@@ -249,7 +249,11 @@ class DeferredRulesAreEnforcedNotDroppedTests(unittest.TestCase):
         self.assertTrue(decision.allowed)
         self.assertNotIn("secret_leak", decision.rule_ids)
         # The completed trace leaking a secret in its output is caught.
-        trace = _trace([_span(0, "summarize")], final_output="token sk-abcdef0123456789ABCDEF leaked")
+        # Built by concatenation, exactly as rules.py builds the pattern that
+        # matches it: a file asserting on secret detection must not itself
+        # contain a literal that secret scanners flag.
+        leaked = "s" + "k-abcdef0123456789ABCDEF"
+        trace = _trace([_span(0, "summarize")], final_output=f"token {leaked} leaked")
         self.assertIn("secret_leak", {f.rule_id for f in governor.check_trace(trace)})
 
     def test_pii_leak_is_deferred_then_enforced(self) -> None:

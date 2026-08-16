@@ -1,12 +1,16 @@
 # The governor over MCP: wiring and a recorded session
 
-`plimsoll-governor` serves the deterministic pre-execution gate over MCP (stdio). An MCP
-host asks `propose_tool_call` before executing each tool call and treats a `block` decision
-as "do not execute"; `check_trace` runs the full post-hoc audit once the run completes.
-Same engine as the CLI: no LLM, no outbound network, no third-party import in the core —
-only the server wrapper needs the optional `mcp` SDK.
+`plimsoll-governor` serves the deterministic pre-execution gate over MCP (stdio). A host
+opens a gate session, asks `propose_tool_call` before executing each tool call, and treats
+a `block` decision as "do not execute"; `check_trace` runs the full post-hoc audit once the
+run completes. Same engine as the CLI: no LLM, no outbound network, no third-party import
+in the core — only the server wrapper needs the optional `mcp` SDK.
 
-![Terminal demo: the scripted client drives the real MCP server through allow, deny, and budget-exceeded verdicts](../demo/mcp-governor.gif)
+The server keeps the record of what it allowed. That is the point of the session: the
+history every ordering and budget verdict is computed from must not be written by the agent
+the gate is constraining.
+
+![Terminal demo: the scripted client drives the real MCP server through allow, deny, forged-history, and budget-exceeded verdicts](../demo/mcp-governor.gif)
 
 ## Wire it into an agent host
 
@@ -44,18 +48,32 @@ Notes:
 - `plimsoll-governor` must be on the host's `PATH` (it lands wherever `pip` installed
   plimsoll). `python -m plimsoll.governor_mcp` is the identical entry point if you would
   rather pin an interpreter.
-- Omitting `--policy` yields a permissive empty policy — the server runs, but nothing is
-  gated. Every rule the gate enforces comes from your policy file
-  ([schema](policy.schema.json)).
+- Omitting `--policy` yields the empty policy. That is not the same as gating nothing:
+  `max_repeated_action_count` defaults to `1`, so the second identical tool call is still
+  blocked by `repeated_action`. Every other rule the gate enforces comes from your policy
+  file ([schema](policy.schema.json)).
 
-The host sees two tools:
+The host sees three tools:
 
-| Tool                | Question it answers                                              |
-| ------------------- | ---------------------------------------------------------------- |
-| `propose_tool_call` | Given the partial trace so far, may this next tool call execute? |
-| `check_trace`       | The full deterministic audit over a completed trace.             |
+| Tool                | Question it answers                                                          |
+| ------------------- | ---------------------------------------------------------------------------- |
+| `open_session`      | Start a gate session; returns the handle and the served policy's SHA-256.     |
+| `propose_tool_call` | Given what this session has allowed so far, may this next tool call execute?  |
+| `check_trace`       | The full deterministic audit over a completed trace.                          |
 
-## The recorded session: three verdicts on the wire
+`propose_tool_call(session_id, proposed_call, partial_trace=None)` takes the handle
+`open_session` returned. A proposal without a live session is refused (`session_unknown`)
+rather than judged against an empty history — an unsessioned gate would treat every call as
+the first one, which is a free budget and a bypassed ordering rule. `partial_trace` is
+optional and is *never* used as the record: if a host sends its own view of the history, it
+is compared with the server's and any disagreement blocks the call
+(`session_history_mismatch`).
+
+Every decision echoes `session_id` and `policy_digest` — the SHA-256 of the effective
+policy text — so a recorded verdict binds to the exact policy that produced it and cannot
+be presented as a decision made under different rules.
+
+## The recorded session: eight verdicts on the wire
 
 [`examples/mcp-governor-session/transcript.jsonl`](../examples/mcp-governor-session/transcript.jsonl)
 is a complete JSON-RPC session (both directions, one wire message per line) captured
@@ -70,17 +88,29 @@ prod-db". The policy allowlists the workflow's tools, requires `manager_review` 
 a live model — that is what makes the session deterministic and replayable. The server
 side, and every verdict below, is the real served governor.
 
-### 1. ALLOW — an ordinary step clears the gate
+### 0. OPEN — the server takes custody of the history
 
-After a ticket search, the agent proposes reading the request record (transcript seq 6–7):
+The first `tools/call` opens the session (seq 6–7). Nothing is gated yet; what matters is
+who will be keeping score:
 
 ```json
-{"partial_trace": [{"tool": "search_tickets", "...": "..."}],
- "proposed_call": {"tool": "read_record", "input": {"record_id": "REQ-4821"}}}
+{"session_id": "session-1",
+ "policy_digest": "sha256:617c494779e26a428f9062328dcf68e4cfd7dae92972925cd3992b80f5c45fcb",
+ "authorized_tools": []}
+```
+
+### 1. ALLOW — ordinary steps clear the gate
+
+The agent searches for the ticket, then proposes reading the request record (seq 8–11):
+
+```json
+{"session_id": "session-1",
+ "proposed_call": {"tool": "read_record", "input": {"record_id": "REQ-4821"}, "...": "..."}}
 ```
 
 ```json
 {"decision": "allow", "allowed": true, "proposed_tool": "read_record",
+ "policy_digest": "sha256:617c4947...", "session_id": "session-1",
  "summary": "allow: no governor rule blocked 'read_record'", "blocking_findings": []}
 ```
 
@@ -88,7 +118,7 @@ After a ticket search, the agent proposes reading the request record (transcript
 
 The agent's task *is* to grant access, and `grant_access` is on the allowlist — proposing
 it now is the shortest path to completion, not a strawman. But neither required review has
-run, so the gate blocks it pre-execution with two critical findings (seq 8–9):
+run, so the gate blocks it pre-execution with two critical findings (seq 12–13):
 
 ```json
 {"decision": "block", "allowed": false, "proposed_tool": "grant_access",
@@ -105,11 +135,41 @@ The rationale is machine-readable evidence, not prose: each finding names the mi
 recover (run the reviews, then propose again — the same call is allowed once both precede
 it).
 
-### 3. BUDGET-EXCEEDED — cumulative spend caps a call before it runs
+### 3. FORGED HISTORY — the same call, retried with a past that did not happen
+
+The obvious way around an ordering rule is to claim the prerequisites already ran. The
+agent retries the identical `grant_access` and this time supplies a `partial_trace`
+containing `manager_review` and `security_review`. The server never ran either, and says so
+(seq 14–15):
+
+```json
+{"decision": "block", "allowed": false, "proposed_tool": "grant_access",
+ "summary": "block: 'grant_access' blocked by session_history_mismatch",
+ "blocking_findings": [
+   {"rule_id": "session_history_mismatch", "severity": "critical",
+    "message": "'grant_access' is blocked: the supplied history is not what this session authorized.",
+    "evidence": {"session_id": "session-1",
+                 "authorized_tools": ["search_tickets", "read_record"],
+                 "supplied_tools": ["search_tickets", "read_record", "manager_review", "security_review"]}}]}
+```
+
+This is the whole reason the gate keeps its own record. A gate that computes ordering from
+a history the gated agent supplies is not a control; it is a formality the agent can
+satisfy by asserting.
+
+### 4. ALLOW — the approvals actually happen, and the grant goes through
+
+`manager_review` and `security_review` are proposed, gated, allowed, and recorded; the same
+`grant_access` the gate refused twice is now allowed (seq 16–21). The rule is an ordering
+constraint, not a refusal to ever grant — a gate that only ever says no would be trivial to
+build and useless to ship.
+
+### 5. BUDGET-EXCEEDED — cumulative spend caps a call before it runs
 
 Both approvals are done; the agent proposes summarizing the full ticket history for the
-approval note, estimated at 2600 input tokens. The trace so far has spent 1560 tokens, so
-this call would take the cumulative total to 4160 — over the policy's 4000 cap (seq 10–11):
+approval note, estimated at 2600 input tokens. The calls the *server* authorized have spent
+1560 tokens, so this call would take the cumulative total to 4160 — over the policy's 4000
+cap (seq 22–23):
 
 ```json
 {"decision": "block", "allowed": false, "proposed_tool": "summarize",
@@ -130,13 +190,14 @@ python scripts/build_mcp_governor_session.py
 The builder drives a fresh server subprocess through the scripted session, verifies each
 verdict against its ground-truth expectation, captures the session **twice** and
 byte-compares the two captures before writing the transcript — determinism is checked on
-every regeneration, not assumed. The committed transcript was captured with `mcp` SDK
-1.28.1; a different SDK version can change protocol fields (`serverInfo.version`, tool
+every regeneration, not assumed. (Session handles are sequential — `session-1` — precisely
+so a served session stays reproducible.) The committed transcript was captured with `mcp`
+SDK 1.29.0; a different SDK version can change protocol fields (`serverInfo.version`, tool
 schemas) but not the verdicts.
 
 The session is also pinned to the code:
 [`tests/test_governor_mcp_session.py`](../tests/test_governor_mcp_session.py) replays the
-committed transcript on every test run — through the SDK-free `GovernorTools` surface
+committed transcript on every test run — through the SDK-free `make_handlers` surface
 always, and end-to-end against a real stdio server subprocess when the `mcp` extra is
 installed. A governor whose verdicts drift from the transcript fails the suite.
 
@@ -148,3 +209,9 @@ that need the call's result or the finished trajectory (output match, PII/secret
 drift) stay deferred to the post-hoc audit — call `check_trace` at the end of the run. See
 the [Runtime governor](../README.md#runtime-governor-gate-a-tool-call-before-it-runs)
 section of the README for the full boundary.
+
+One more limit worth stating plainly: the session's record is the list of calls the
+governor **authorized**. A gate cannot observe whether the host actually executed one, so
+an agent that is authorized to run `manager_review` and then skips it has told the gate
+something it cannot check. That is what the post-hoc `check_trace` audit over the real
+trace is for — the two tiers are complementary, and neither is a substitute for the other.

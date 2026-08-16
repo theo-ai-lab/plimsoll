@@ -53,8 +53,25 @@ class GovernorLoopDemoTests(unittest.TestCase):
         # The demo should demonstrate the breadth of the gate, not just one rule.
         result = self.demo.run_loop()
         fired = {rule for entry in result.log for rule in entry["rules"]}
-        for rule in ("forbidden_tool", "tool_allowlist", "tool_order", "max_tokens", "repeated_action"):
+        for rule in (
+            "forbidden_tool",
+            "tool_allowlist",
+            "tool_order",
+            "max_tokens",
+            "repeated_action",
+            "session_history_mismatch",
+        ):
             self.assertIn(rule, fired)
+
+    def test_the_loop_never_hands_the_gate_a_history_of_its_own(self) -> None:
+        # The demo is the reference integration: if it kept the trace and passed it in,
+        # every reader would copy the pattern the gate exists to refuse. The only history
+        # in the stream is the one scripted step that deliberately forges it.
+        source = self.demo.__file__ and Path(self.demo.__file__).read_text(encoding="utf-8")
+        self.assertIn("gate.open_session()", source)
+        forged = [step for step in self.demo.STREAM if step.claimed_history is not None]
+        self.assertEqual(len(forged), 1)
+        self.assertTrue(forged[0].expect_block)
 
 
 if __name__ == "__main__":

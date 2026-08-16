@@ -1,23 +1,35 @@
 """MCP-style tool surface for the Plimsoll runtime :class:`~plimsoll.governor.Governor`.
 
-This exposes two tools a live agent (or an MCP host) can call:
+This exposes three tools a live agent (or an MCP host) can call:
 
-  * ``propose_tool_call(partial_trace, proposed_call)`` — the pre-execution GATE: decide
-    whether the next tool call is allowed, with the rule that fired.
+  * ``open_session()`` — start a gate session. The server keeps the record of what it
+    allows; the handle it returns identifies that record.
+  * ``propose_tool_call(session_id, proposed_call, partial_trace=None)`` — the
+    pre-execution GATE: decide whether the next tool call is allowed, with the rule that
+    fired. History comes from the session, never from the caller: ``partial_trace`` is
+    optional and, when sent, is only cross-checked (a mismatch fails closed).
   * ``check_trace(trace)`` — the full post-hoc audit, mirroring the CLI (``evaluate_trace``).
 
-Both handlers take and return plain JSON-able values, so they work with or without the
+A proposal with no valid session is refused (``session_unknown``) rather than judged
+against an empty history — an unsessioned gate would treat every call as the first one,
+which is exactly the free budget and forged ordering the session exists to prevent.
+
+All handlers take and return plain JSON-able values, so they work with or without the
 MCP SDK and are trivially unit-testable.
 
 Optional dependency
 -------------------
 The ``mcp`` SDK is OPTIONAL. If it is not installed, this module still works as plain
 callables — build them with :func:`make_handlers` or use :class:`GovernorTools` directly.
-The MCP server wiring (:func:`build_server`) is only available when ``mcp`` is importable.
+The MCP server wiring (:func:`build_server`) needs the 1.x ``mcp.server.fastmcp`` API,
+which the 2.x SDK removed, so the extra is pinned to the range this server can actually
+wire up:
 
-    pip install mcp
+    pip install 'mcp>=1.0,<2'
 
-Without it, ``_HAS_MCP`` is False and only the plain-callable surface is exposed.
+Without an SDK it can serve with, ``_HAS_MCP`` is False and only the plain-callable
+surface is exposed — including when a *newer* SDK is installed, so an unusable version
+reads as "cannot serve" instead of failing halfway through startup.
 
 This preserves Plimsoll's zero-dependency identity: the core engine never imports ``mcp``.
 """
@@ -29,16 +41,20 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from plimsoll.governor import Decision, Governor, coerce_partial_trace
+from plimsoll.governor import SESSION_UNKNOWN_RULE, Decision, Governor, ProposedToolCall
 from plimsoll.io import load_policy, parse_trace
-from plimsoll.models import Finding, JsonObject, Policy, TraceRun
+from plimsoll.models import Finding, JsonObject, Policy, TraceRun, ValidationError
 
 try:  # The MCP SDK is an optional extra; the engine works fine without it.
-    import mcp  # type: ignore  # noqa: F401
+    # Import the exact wiring build_server needs, not just the top-level package: the SDK's
+    # server layout is not stable across majors (mcp 2.x has no mcp.server.fastmcp), and an
+    # installed-but-unusable SDK must read as "cannot serve" rather than crash the launcher.
+    from mcp.server.fastmcp import FastMCP  # type: ignore  # noqa: F401
 
     _HAS_MCP = True
 except ImportError:  # pragma: no cover - exercised only where the optional extra is absent
-    # MCP SDK not installed. To serve these tools over MCP, run `pip install mcp`.
+    # No MCP SDK this server can wire up. To serve these tools over MCP, install the
+    # supported range: `pip install 'mcp>=1.0,<2'`.
     # The plain callables below remain fully functional without it.
     _HAS_MCP = False
 
@@ -71,11 +87,42 @@ class GovernorTools:
             return cls(Governor(policy))
         return cls(Governor(load_policy(Path(policy_path) if policy_path is not None else None)))
 
-    def propose_tool_call(self, partial_trace: Any, proposed_call: Any) -> JsonObject:
-        """Gate a proposed tool call before it executes. Returns a serialized Decision."""
-        partial = coerce_partial_trace(partial_trace)
-        decision: Decision = self.governor.evaluate(partial, proposed_call)
+    def open_session(self) -> JsonObject:
+        """Open a gate session. The returned handle names the governor's own call record."""
+        session = self.governor.open_session()
+        return {
+            "session_id": session.session_id,
+            "policy_digest": self.governor.policy_digest,
+            "authorized_tools": session.tool_sequence,
+        }
+
+    def propose_tool_call(self, session_id: Any, proposed_call: Any, partial_trace: Any = None) -> JsonObject:
+        """Gate a proposed tool call before it executes. Returns a serialized Decision.
+
+        ``session_id`` must be a handle from :meth:`open_session`; the history is the one
+        the governor recorded for it. ``partial_trace`` is optional and never used as the
+        record — if sent, it must agree with the governor's or the call is blocked.
+        """
+        session = self.governor.session(session_id)
+        if session is None:
+            return self._no_session(session_id, proposed_call).to_dict()
+        decision: Decision = session.propose(proposed_call, client_history=partial_trace)
         return decision.to_dict()
+
+    def _no_session(self, session_id: Any, proposed_call: Any) -> Decision:
+        """Fail closed: a proposal without a live session is refused, not judged blind."""
+        try:
+            tool = ProposedToolCall.from_obj(proposed_call).tool
+        except ValidationError:
+            tool = "<unreadable>"
+        finding = Finding(
+            rule_id=SESSION_UNKNOWN_RULE,
+            severity="critical",
+            case_id="session",
+            message=f"'{tool}' is blocked: no open governor session. Call open_session first.",
+            evidence={"session_id": session_id if isinstance(session_id, str) else None},
+        )
+        return Decision(proposed_tool=tool, blocking_findings=[finding], policy_digest=self.governor.policy_digest)
 
     def check_trace(self, trace: Any, baseline: Any = None) -> JsonObject:
         """Run the full deterministic audit over a completed trace (post-hoc)."""
@@ -92,9 +139,14 @@ class GovernorTools:
 
 
 def make_handlers(governor: Governor) -> dict[str, Any]:
-    """Return plain ``{name: callable}`` handlers — the SDK-free tool surface."""
+    """Return plain ``{name: callable}`` handlers — the SDK-free tool surface.
+
+    All three share one :class:`GovernorTools`, so a session opened through the returned
+    ``open_session`` is the session ``propose_tool_call`` gates against.
+    """
     tools = GovernorTools(governor)
     return {
+        "open_session": tools.open_session,
         "propose_tool_call": tools.propose_tool_call,
         "check_trace": tools.check_trace,
     }
@@ -109,18 +161,25 @@ def build_server(governor: Governor, name: str = "plimsoll-governor") -> Any:
     """
     if not _HAS_MCP:  # pragma: no cover - depends on the optional extra being absent
         raise RuntimeError(
-            "the 'mcp' SDK is not installed; run `pip install mcp` to serve the governor "
-            "over MCP, or use make_handlers() for the SDK-free callable surface"
+            "no MCP SDK this server can wire up; run `pip install 'mcp>=1.0,<2'` to serve "
+            "the governor over MCP, or use make_handlers() for the SDK-free callable surface"
         )
-    from mcp.server.fastmcp import FastMCP  # type: ignore  # imported lazily; optional extra
-
     server = FastMCP(name)
     tools = GovernorTools(governor)
 
     @server.tool()
-    def propose_tool_call(partial_trace: Any, proposed_call: Any) -> JsonObject:
-        """Decide whether a proposed next tool call is allowed, given the partial trace."""
-        return tools.propose_tool_call(partial_trace, proposed_call)
+    def open_session() -> JsonObject:
+        """Open a gate session; the server keeps the record of the calls it allows."""
+        return tools.open_session()
+
+    @server.tool()
+    def propose_tool_call(session_id: str, proposed_call: Any, partial_trace: Any = None) -> JsonObject:
+        """Decide whether a proposed next tool call is allowed in this gate session.
+
+        The history is the server's own record for ``session_id``. ``partial_trace`` is
+        optional; when supplied it is only cross-checked, and a mismatch blocks the call.
+        """
+        return tools.propose_tool_call(session_id, proposed_call, partial_trace)
 
     @server.tool()
     def check_trace(trace: Any, baseline: Any = None) -> JsonObject:
@@ -144,8 +203,14 @@ def main(argv: list[str] | None = None) -> int:
         description="Serve the deterministic Plimsoll governor over MCP (stdio transport). "
         "No LLM, no outbound network — the same offline rule engine, exposed as MCP tools.",
     )
+    # NOT "permissive": the default Policy() still carries max_repeated_action_count=1
+    # (see SCHEMA.md), so with no policy file the second identical call is blocked by
+    # repeated_action. Scoring an external corpus is what caught the old wording.
     parser.add_argument(
-        "--policy", type=Path, default=None, help="policy JSON file (default: a permissive empty policy)"
+        "--policy",
+        type=Path,
+        default=None,
+        help="policy JSON file (default: the empty policy, which still caps identical repeated calls at 1)",
     )
     parser.add_argument(
         "--name",
@@ -156,9 +221,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if not _HAS_MCP:
         print(
-            "error: the 'mcp' SDK is not installed. Install the optional extra "
-            "(from a clone: `python -m pip install -e '.[mcp]'`, or `pip install mcp`) "
-            "to serve the governor over MCP. "
+            "error: no MCP SDK this server can wire up is installed. Install the optional "
+            "extra (from a clone: `python -m pip install -e '.[mcp]'`, or "
+            "`pip install 'mcp>=1.0,<2'`) to serve the governor over MCP. "
             "The SDK-free callable surface (make_handlers / GovernorTools) works without it.",
             file=sys.stderr,
         )

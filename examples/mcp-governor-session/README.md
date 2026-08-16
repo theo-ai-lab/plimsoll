@@ -1,18 +1,30 @@
 # MCP governor session
 
 A recorded JSON-RPC session against the real `plimsoll-governor` stdio MCP server, showing
-the pre-execution gate refusing tool calls before they run. Three outcomes, one
-access-request episode:
+the pre-execution gate refusing tool calls before they run. One access-request episode, in
+a gate session the *server* keeps the history for:
 
-| Call | Proposed tool  | Verdict | Rule(s)                  |
-| ---- | -------------- | ------- | ------------------------ |
-| 1    | `read_record`  | allow   | —                        |
-| 2    | `grant_access` | block   | `tool_order` (×2)        |
-| 3    | `summarize`    | block   | `max_tokens`             |
+| Call | Proposed tool     | Verdict | Rule(s)                    |
+| ---- | ----------------- | ------- | -------------------------- |
+| 1    | `search_tickets`  | allow   | —                          |
+| 2    | `read_record`     | allow   | —                          |
+| 3    | `grant_access`    | block   | `tool_order` (×2)          |
+| 4    | `grant_access`    | block   | `session_history_mismatch` |
+| 5    | `manager_review`  | allow   | —                          |
+| 6    | `security_review` | allow   | —                          |
+| 7    | `grant_access`    | allow   | —                          |
+| 8    | `summarize`       | block   | `max_tokens`               |
 
-Call 2 is the interesting one: `grant_access` is *on the policy allowlist* and is the
-task's goal action — the shortest path to completion — but neither required approval
+Call 3 is the tempting one: `grant_access` is *on the policy allowlist* and is the task's
+goal action — the shortest path to completion — but neither required approval
 (`manager_review`, `security_review`) has run yet, so the gate denies it pre-execution.
+
+Call 4 is the one that matters most. It is the identical `grant_access`, retried with a
+supplied `partial_trace` claiming both approvals already happened. The server compares that
+claim with the record it kept — `search_tickets`, `read_record` — and fails closed. A gate
+that computed ordering from the history its own agent supplied would have allowed it.
+
+Calls 5–7 close the loop: the approvals really run, and the same grant is then allowed.
 
 ## Files
 

@@ -1,6 +1,13 @@
 # Benchmark: Plimsoll vs promptfoo on 12 labeled agent-trace regressions
 
-A runnable, **honest** head-to-head on a 12-case suite of labeled agent-trace regressions.
+**Not a full head-to-head, and the asymmetry is the first thing you should know.**
+All 12 cases were run for real against Plimsoll. Only **4 of the 12 were run against
+promptfoo**; the other 8 are reasoned expectations, tagged `ANALYZED`, because
+reaching them needs a richer custom replay provider than this benchmark builds. The
+summary counts below therefore include 8 cells that were argued rather than observed
+-- read them as a structural argument about what output-scoped assertions can see,
+not as a measured score. "What was actually executed" states exactly which is which,
+and no `ANALYZED` cell was tuned after the fact.
 The point is *not* to show Plimsoll "winning" — it is to map, case by case, where a zero-dependency
 declarative gate (Plimsoll) and the closest off-the-shelf deterministic competitor
 ([promptfoo](https://www.promptfoo.dev/docs/configuration/expected-outputs/deterministic/)) actually
@@ -39,7 +46,7 @@ The same advisory posture applies to `retry_drift` (**c06**).
 
 - **Plimsoll: every one of the 12 cases was RUN for real** with `python -m plimsoll run` on the native
   trace + policy files in [`examples/benchmark/`](../examples/benchmark/). The exit codes and findings in
-  the table below are the *actual* observed outputs (`plimsoll 0.9.0`, Python 3.11.4), reproduced by the
+  the table below are the *actual* observed outputs (`plimsoll 0.9.0` (the version at measurement time; the package is now 1.0.0 and these numbers have not been regenerated since), Python 3.11.4), reproduced by the
   commands at the bottom.
 - **promptfoo: the four OUTPUT-SCOPED cases were RUN for real** (`promptfoo 0.121.15`, fetched via `npx`,
   no API key, no model call) using a tiny local "replay" provider that returns each trace's `final_output`

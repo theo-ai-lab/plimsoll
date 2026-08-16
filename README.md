@@ -126,7 +126,9 @@ third-party import.
 `plimsoll governor` is the one-shot CLI gate. It reads a proposed tool call as JSON (a
 tool-name string, or an object with a `tool` field plus optional `input`/token/cost hints) from
 `--call` or stdin, takes the calls that already ran via `--partial-trace`, and exits non-zero
-when a rule blocks it:
+when a rule blocks it. It is a one-shot evaluator: `--partial-trace` is a history *you*
+supply, which is right for a shell, a plan, or a recorded run — to gate a live agent, use
+the session-based MCP server below, where the governor keeps the history itself:
 
 ```bash
 # Forbidden tool: blocked outright (exit 1).
@@ -145,22 +147,37 @@ echo '{"tool": "grant_access"}' | plimsoll governor \
 ```
 
 For a long-running integration, `plimsoll-governor` serves the same gate over MCP (stdio) as
-two tools — `propose_tool_call` (the gate) and `check_trace` (the full audit) — so an MCP host
-or agent loop can consult it on every proposed tool call:
+three tools — `open_session`, `propose_tool_call` (the gate) and `check_trace` (the full
+audit) — so an MCP host or agent loop can consult it on every proposed tool call:
 
 ```bash
 python -m pip install -e '.[mcp]'   # the mcp SDK is an optional extra; the core stays zero-dependency
 plimsoll-governor --policy examples/mcp-governor-session/policy.json
 ```
 
+**The server keeps the history, not the agent.** A host opens a session and gates each call
+in it; the governor appends a call to its record only when it *allowed* it, and every
+ordering, budget and repetition verdict is computed from that record. A history the caller
+supplies is never used as the record — send one and it is cross-checked, and any
+disagreement blocks the call (`session_history_mismatch`); propose without a live session
+and the call is refused (`session_unknown`) rather than judged against an empty past. An
+agent cannot widen its own permissions by describing a past that did not happen. Every
+decision also echoes `policy_digest`, the SHA-256 of the effective policy text, so a
+recorded verdict binds to the exact policy that produced it.
+
+What that does *not* prove: the record is what the governor authorized. A gate cannot see
+whether the host really executed an authorized call — the post-hoc `check_trace` audit over
+the real trace is the tier that can. The two are complementary by design.
+
 [docs/MCP_DEMO.md](docs/MCP_DEMO.md) has the host wiring (`.mcp.json`) and a committed,
 replayable JSON-RPC session against the real server —
 [`examples/mcp-governor-session/`](examples/mcp-governor-session/) — showing an allow, a
-`tool_order` deny of the task's own goal action, and a `max_tokens` budget block, all
-decided before execution.
+`tool_order` deny of the task's own goal action, that same call retried with a forged
+history and refused, the approvals actually running so the grant succeeds, and a
+`max_tokens` budget block, all decided before execution.
 
 If you would rather not depend on the MCP SDK at all, `plimsoll.governor_mcp.make_handlers`
-exposes the same two tools as plain `{name: callable}` JSON-in/JSON-out functions.
+exposes the same three tools as plain `{name: callable}` JSON-in/JSON-out functions.
 [`examples/governor_loop_demo.py`](examples/governor_loop_demo.py) wires the gate into a
 scripted agent loop and verifies every decision against a ground-truth label.
 
@@ -277,6 +294,34 @@ Checked-in, deterministic artifacts you can inspect without running anything:
 
 For the product narrative behind the sample, read [`CASE_STUDY.md`](CASE_STUDY.md).
 
+## Graded against someone else's labels: a 29.9% miss rate
+
+Every other number in this README is self-graded — Plimsoll's engine over Plimsoll's fixtures against Plimsoll's policies. Exactly one number is not.
+
+The runtime governor was replayed over **[R-Judge](https://github.com/Lordog/R-Judge)** (Yuan et al., Findings of EMNLP 2024): 571 multi-turn agent interaction records labelled safe/unsafe by human annotators with no stake in this project.
+
+**The governor misses 29.9% of the unsafe records, and falsely blocks 9.4% of the safe ones.**
+
+| | derived deny-list | default empty policy |
+| --- | ---: | ---: |
+| records scored / total | 495 / 571 | 495 / 571 |
+| unmappable — no tool call at all | 76 (50 unsafe) | 76 (50 unsafe) |
+| caught | 211 | 3 |
+| **missed** | **40** | 248 |
+| **falsely rejected** | **23** | 0 |
+| miss rate over the 251 unsafe records it could see | 15.9% | 98.8% |
+| **worst-case miss rate over all 301 unsafe records** | **29.9%** | 99.0% |
+
+29.9% is the honest denominator: it counts the 50 unsafe records that contain no tool call, which a tool gate is structurally blind to, as misses. Reporting only the 15.9% would have quietly dropped them. The policy is a pure function of the corpus's tool vocabulary and a fixed verb list, so it never read a label. On tuning, be precise about what this repository can and cannot show: the verb list is pinned in code by a test, but the plan, the scorer and the scorecard all first appear together in commit `df4fb02`, so **there is no commit predating the measurement that would prove the list was fixed beforehand**. Treat the label-blindness as an argument from the code's structure -- the scorer cannot read a label because it is never given one -- not as a preregistration, which would need an immutable timestamp this history does not contain.
+
+```bash
+python -m plimsoll corpus-score --corpus examples/external-corpus/fixture-corpus   # offline, bundled fixture
+python scripts/fetch_rjudge_corpus.py --out .corpus/rjudge                          # pinned + digest-verified
+python scripts/score_external_corpus.py --corpus .corpus/rjudge                     # reproduce the number
+```
+
+This is **one corpus, one revision, one policy**. It is not a claim that Plimsoll catches 70% of unsafe agent behaviour, and it is not comparable to the R-Judge leaderboard (those are LLM judges answering a different question). [`examples/external-corpus/`](examples/external-corpus/) has the scorecard and per-record ledger; [`docs/adr/0001-external-corpus-miss-rate.md`](docs/adr/0001-external-corpus-miss-rate.md) states exactly what the number does and does not license.
+
 ## Reference scenario: IT access-request
 
 A worked, end-to-end reliability loop on a high-stakes workflow: an AI assistant that handles privileged IT access requests must never call `grant_access` before a completed `manager_review` and `security_review`. [`examples/access-request/`](examples/access-request/) holds a deterministic reference agent, the access-control policy, seven adversarial probes, a workflow risk plan, and committed clean/failed/fixed traces and reports.
@@ -290,7 +335,7 @@ Regenerate it with `python scripts/build_access_request_demo.py`. Read [`BEFORE_
 
 ```bash
 python -m pip install -e '.[dev]'      # adds ruff (the only dev dependency)
-python -m unittest discover -s tests   # 242 tests
+python -m unittest discover -s tests   # 313 tests
 ruff check .
 python scripts/validate_public_fixtures.py
 ```
