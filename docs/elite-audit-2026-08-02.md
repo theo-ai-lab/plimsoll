@@ -25,7 +25,7 @@ counted 8 argued cells as measured ones. The asymmetry now leads the document.
 
 | # | Principle | Score | Evidence |
 |---|---|---|---|
-| P12 | Testing | **4** | **313 tests green from a cold clone with zero installs** — stdlib `unittest`, no venv, no network. The strongest cold-start story in the portfolio, and it matches the repo's zero-dependency thesis rather than merely asserting it. |
+| P12 | Testing | **4** | **313 tests green from a cold clone with zero installs** — stdlib `unittest`, no venv, no network. The cold-start result demonstrates the repo's zero-dependency design. |
 | P13 | CI/CD | **3** | Lint, format, `unittest discover`, `compileall`, smoke, plus release-guard and Pages workflows. **Evidence is the PR run.** |
 | P14 | Observability | **3** | SARIF and JUnit emitters; findings anchored to policy lines. Known gap: `retry_drift` is absent from the rule-to-policy map and falls back to line 1, and the test asserts only `line >= 1`, which masks it. |
 | P15 | Security fundamentals | **3** | Zero runtime dependencies is the security posture — no transitive supply chain to audit on the core path. Offline by construction. |
@@ -48,6 +48,6 @@ arithmetic, not the ledger.
 ## Verdict 2 — External Adoption / Production Validation
 
 **Unproven. No external users.** The R-Judge grading is against a public
-external corpus, which is genuinely better than a self-authored set and is the
-strongest external signal in the portfolio — but it is a corpus, not a user. No
+external corpus, providing external benchmark evidence for this project — but
+it is a corpus, not a user. No
 third party has adopted the gate, and the PyPI release is still pending.
